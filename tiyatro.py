@@ -26,37 +26,34 @@ def main():
     
     # Görevler Verisi
     task_data = {
-        "Grup": ["Sanem, Eda", "Öykü, Gökçe", "Öykü, Gökçe", "Erlo, Öykü", "Erol"],
+        "Grup": ["Sanem, Eda", "Öykü, Gökçe", "Öykü, Gökçe", "Erol, Öykü", "Erol"],
         "Görev": ["Godot", "Oyun Sonu", "Mutlu Günler", "Molloy", "Malone Ölüyor"]
     }
     
     task_df = pd.DataFrame(task_data)
     
-    # Yeni veri seti oluşturma (Pivot Wider gibi)
-    expanded_task_data = []
-    for _, row in task_df.iterrows():
-        people = [p.strip() for p in row["Grup"].split(",")]
-        for person in people:
-            expanded_task_data.append({"Kişi": person, "Görev": row["Görev"]})
-    
-    expanded_task_df = pd.DataFrame(expanded_task_data)
-    
     st.subheader("Görevler")
-    st.dataframe(expanded_task_df)
+    st.dataframe(task_df)
     
     # Kullanıcıya göre görev belirleme
-    selected_person = st.selectbox("Kişi seçin", sorted(expanded_task_df["Kişi"].unique()))
+    selected_person = st.selectbox("Kişi seçin", sorted(set(sum([g.split(", ") for g in task_df["Grup"]], []))))
     
-    filtered_tasks = expanded_task_df[expanded_task_df["Kişi"] == selected_person]
+    filtered_tasks = task_df[task_df["Grup"].str.contains(selected_person, na=False)]
     
     st.subheader(f"{selected_person} için görevler")
     st.write(filtered_tasks if not filtered_tasks.empty else "Bu kişi için görev bulunamadı.")
     
     # Notlar Bölümü
     st.subheader("Notlar")
-    notes = st.text_area("Not ekleyin:", "")
-    if st.button("Notu Kaydet"):
-        st.write("Kaydedilen Not:", notes)
+    notes_data = {
+        "Genel Notlar": [
+            "İlk taslak için geri dönüt toplantısı kritik.",
+            "Mesh-up sürecinde ekip içi uyuma dikkat edilmeli.",
+            "Oyun metinleri eksiksiz şekilde gözden geçirilmeli."
+        ]
+    }
+    notes_df = pd.DataFrame(notes_data)
+    st.dataframe(notes_df)
 
 if __name__ == "__main__":
     main()
