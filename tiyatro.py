@@ -47,9 +47,13 @@ def main():
     st.subheader("Notlar")
     notes_data = {
         "Genel Notlar": [
-            "İlk taslak için geri dönüt toplantısı kritik.",
-            "Mesh-up sürecinde ekip içi uyuma dikkat edilmeli.",
-            "Oyun metinleri eksiksiz şekilde gözden geçirilmeli."
+            "Dekor-Plastik: Teknoloji-uygulama denemeleri & son ürün -> hareket tasarımı",
+            "Kayıt: Kayıt Provasısı (sahne üzeri ve teknik) & kaydın kendisi (çekim & kurgu)",
+            "Sahne üzeri: Prova(genel oyun provası ve hareket tasarımı provası) & makyaj & kostüm",
+            "Sahne Çalışması: haftada 1-2/5-6 hafta",
+            "Durum doğaçları: 5/6 hafta",
+            "kostüm-aksesuar denemesi: son 1-2 hafta",
+            "Kasım ilk haftası PRÖMİYER!!!!"
         ]
     }
     notes_df = pd.DataFrame(notes_data)
