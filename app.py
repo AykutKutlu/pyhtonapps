@@ -2,86 +2,75 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import ta
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
-from statsmodels.tsa.stattools import adfuller
-import warnings
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
-warnings.filterwarnings("ignore")
+# Hisse senedi sembolleri
+symbols = [
+    "GARAN.IS", "KCHOL.IS", "THYAO.IS", "FROTO.IS", "ISCTR.IS", "BIMAS.IS", "TUPRS.IS", "ENKAI.IS", "ASELS.IS", "AKBNK.IS",
+    "YKBNK.IS", "VAKBN.IS", "TCELL.IS", "SAHOL.IS", "SASA.IS", "TTKOM.IS", "EREGL.IS", "CCOLA.IS", "PGSUS.IS", "SISE.IS"
+]
 
-# Streamlit Arayüzü
-st.title("BIST 100 Teknik ve Zaman Serisi Analizi")
+st.title("📈 BIST 100 Hisse Tahminleme")
 
-# Kullanıcının seçim yapabileceği hisseler
-stocks = ["GARAN.IS", "KCHOL.IS", "THYAO.IS", "FROTO.IS", "ISCTR.IS", "BIMAS.IS", "TUPRS.IS", "ENKAI.IS", "ASELS.IS", "AKBNK.IS"]
-selected_stocks = st.multiselect("Hisse Seçimi", stocks, default=["GARAN.IS"])
+# Kullanıcıdan seçim alma
+symbol = st.selectbox("📊 Hisse Seçimi:", symbols)
+p = st.number_input("🔢 AR (p) Değeri:", min_value=0, value=1)
+d = st.number_input("🔢 Fark Düzeyi (d):", min_value=0, value=1)
+q = st.number_input("🔢 MA (q) Değeri:", min_value=0, value=1)
+model_type = st.selectbox("📡 Tahmin Modeli Seçiniz:", ["ARIMA", "ETS", "Holt-Winters"])
 
-show_rsi = st.checkbox("RSI Göster", value=True)
-show_ma = st.checkbox("Hareketli Ortalamalar Göster", value=True)
-
-arima_p = st.number_input("ARIMA p:", min_value=0, value=1)
-arima_d = st.number_input("ARIMA d:", min_value=0, value=1)
-arima_q = st.number_input("ARIMA q:", min_value=0, value=1)
-
-if st.button("Analizi Çalıştır"):
-
-    for stock in selected_stocks:
-        st.subheader(f"{stock} Analizi")
-        
+if st.button("📊 Tahminle"):
+    try:
         # Veri çekme
-        df = yf.download(stock, start="2022-01-01", end="2024-12-31")
-        df["RSI"] = ta.momentum.RSIIndicator(df["Close"], window=14).rsi()
-        df["MA50"] = df["Close"].rolling(window=50).mean()
-        df["MA200"] = df["Close"].rolling(window=200).mean()
+        stock_data = yf.download(symbol, start="2020-01-01", progress=False)
         
-        # Teknik Analiz Grafiği
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.plot(df.index, df["Close"], label="Kapanış Fiyatı", color="black")
-        
-        if show_rsi:
-            ax.plot(df.index, df["RSI"], label="RSI", color="blue")
-        if show_ma:
-            ax.plot(df.index, df["MA50"], label="50 Günlük MA", color="red")
-            ax.plot(df.index, df["MA200"], label="200 Günlük MA", color="green")
-        
-        ax.set_title(f"{stock} Teknik Analiz Grafiği")
-        ax.legend()
-        st.pyplot(fig)
-
-        # Zaman Serisi Analizi
-        ts_data = df["Close"].dropna()
-        
-        if len(ts_data) > 30:
-            model = ARIMA(ts_data, order=(arima_p, arima_d, arima_q))
-            model_fit = model.fit()
-            forecast = model_fit.forecast(steps=10)
-
-            fig2, ax2 = plt.subplots(figsize=(12, 6))
-            ax2.plot(ts_data.index, ts_data, label="Gerçek Veri", color="black")
-            ax2.plot(pd.date_range(start=ts_data.index[-1], periods=11, freq="D")[1:], forecast, label="Tahmin", color="red")
-            ax2.set_title(f"{stock} Zaman Serisi Tahmini")
-            ax2.legend()
-            st.pyplot(fig2)
-
-            st.table(pd.DataFrame({"Tarih": pd.date_range(start=ts_data.index[-1], periods=11, freq="D")[1:], "Tahmin": forecast}))
+        if stock_data.empty:
+            st.error("⚠️ Hata: Veri çekilemedi! Lütfen geçerli bir hisse senedi seçin.")
         else:
-            st.warning(f"{stock} için yeterli veri yok!")
+            stock_data = stock_data['Close'].dropna()
 
-        # Finansal Stratejiler Tablosu
-        st.subheader("Finansal Stratejiler")
-        strategy_df = pd.DataFrame({
-            "Strateji": ["Kelebek", "Koruma", "Spread"],
-            "Açıklama": ["Kâr potansiyelini optimize eden strateji.", "Riskten korunma stratejisi.", "Fiyat farkından yararlanma stratejisi."]
-        })
-        st.table(strategy_df)
+            # Tarih aralığını belirleme
+            ts_data = stock_data.asfreq('B').fillna(method='ffill')
 
-        # Muhasebe Analizi
-        avg_volume = df["Volume"].mean()
-        high_low_diff = (df["High"] - df["Low"]).mean()
-        accounting_df = pd.DataFrame({
-            "Metrik": ["Ortalama Hacim", "Günlük Yüksek-Düşük Farkı"],
-            "Değer": [avg_volume, high_low_diff]
-        })
-        st.subheader("Muhasebe Analizi")
-        st.table(accounting_df)
+            # Model Seçimi
+            if model_type == "ARIMA":
+                model = ARIMA(ts_data, order=(p, d, q)).fit()
+            elif model_type == "ETS":
+                model = ExponentialSmoothing(ts_data, trend='add', seasonal=None).fit()
+            elif model_type == "Holt-Winters":
+                model = ExponentialSmoothing(ts_data, trend='add', seasonal='add', seasonal_periods=5).fit()
+
+            # Tahmin Yapma
+            forecast = model.forecast(steps=30)
+            forecast_dates = pd.date_range(start=ts_data.index[-1], periods=30, freq='B')
+            forecast_df = pd.DataFrame({"Date": forecast_dates, "Forecast": forecast})
+
+            # Grafik Çizdirme
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(ts_data.index[-60:], ts_data.values[-60:], label="Gerçek Veri", color='blue', linewidth=2)
+            ax.plot(forecast_df["Date"], forecast_df["Forecast"], label="Tahmin", color='red', linestyle='dashed', linewidth=2)
+            ax.set_title(f"{symbol} Tahmini ({model_type})", fontsize=14)
+            ax.legend()
+            ax.grid()
+            st.pyplot(fig)
+
+            # Tahmin Verilerini Gösterme
+            st.subheader("📋 Tahmin Sonuçları")
+            st.dataframe(forecast_df.head())
+
+            # Excel'e Aktarma Fonksiyonu
+            def convert_df(df):
+                return df.to_csv(index=False).encode('utf-8')
+
+            csv = convert_df(forecast_df)
+            st.download_button(
+                label="📥 Tahminleri İndir",
+                data=csv,
+                file_name=f"{symbol}_tahminler.csv",
+                mime='text/csv',
+            )
+
+    except Exception as e:
+        st.error(f"⚠️ Bir hata oluştu: {e}")
