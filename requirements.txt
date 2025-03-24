@@ -6,3 +6,6 @@ matplotlib
 numpy
 pandas
 plotly
+sklearn.ensemble
+tensorflow
+xgboost
