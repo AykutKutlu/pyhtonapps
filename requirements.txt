@@ -5,3 +5,7 @@ statsmodels
 matplotlib
 numpy
 pandas
+pmdarima
+tensorflow
+xgboost
+sklearn
