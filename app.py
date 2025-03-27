@@ -11,11 +11,11 @@ from xgboost import XGBRegressor
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 
-st.title("BIST 100 Hisse Tahminleme ve Turtle Trade Stratejisi")
+st.title("📈 Hisse & Kripto Tahminleme ve Turtle Trade Stratejisi")
 
-page = st.sidebar.selectbox("Sayfa Seçiniz", ["Tahminleme", "Turtle Trade Stratejisi"])
+market_type = st.selectbox("Piyasa Seçiniz", ["BIST 100", "Kripto Paralar"])
 
-symbols = [
+bist_symbols = [
     "GARAN.IS", "KCHOL.IS", "THYAO.IS", "FROTO.IS", "ISCTR.IS", "BIMAS.IS", "TUPRS.IS", "ENKAI.IS", "ASELS.IS", "AKBNK.IS", 
     "YKBNK.IS", "VAKBN.IS", "TCELL.IS", "SAHOL.IS", "SASA.IS", "TTKOM.IS", "EREGL.IS", "CCOLA.IS", "PGSUS.IS", "SISE.IS", 
     "AEFES.IS", "HALKB.IS", "TOASO.IS", "ARCLK.IS", "TAVHL.IS", "ASTOR.IS", "MGROS.IS", "TTRAK.IS", "AGHOL.IS", "OYAKC.IS", 
@@ -28,6 +28,23 @@ symbols = [
     "BERA.IS", "ODAS.IS", "AKFGY.IS", "GOLTS.IS", "ARDYZ.IS", "BJKAS.IS", "PEKGY.IS", "PAPIL.IS", "LMKDC.IS", "ALTNY.IS"
 ]
 
+crypto_symbols = [
+    "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "AVAX-USD", "DOT-USD", "MATIC-USD",
+    "LTC-USD", "BCH-USD", "LINK-USD", "ICP-USD", "ARB-USD", "XLM-USD", "HBAR-USD", "FIL-USD", "VET-USD", "INJ-USD",
+    "APT-USD", "PEPE-USD", "RNDR-USD", "QNT-USD", "ALGO-USD", "IMX-USD", "AAVE-USD", "GRT-USD", "MKR-USD", "EGLD-USD",
+    "FTM-USD", "THETA-USD", "SAND-USD", "AXS-USD", "XEC-USD", "KAS-USD", "XTZ-USD", "NEAR-USD", "CHZ-USD", "LDO-USD",
+    "CRV-USD", "RUNE-USD", "FLOW-USD", "BSV-USD", "STX-USD", "ENS-USD", "GALA-USD", "KAVA-USD", "MINA-USD", "TWT-USD",
+    "FXS-USD", "ZEC-USD", "SUSHI-USD", "ONE-USD", "CVX-USD", "OSMO-USD", "ROSE-USD", "CELO-USD", "GMT-USD", "NEXO-USD",
+    "DYDX-USD", "LRC-USD", "AUDIO-USD", "COMP-USD", "YFI-USD", "BICO-USD", "JASMY-USD", "IOST-USD", "ANKR-USD", "ENS-USD",
+    "BAL-USD", "API3-USD", "COTI-USD", "BAND-USD", "OCEAN-USD", "GLMR-USD", "KDA-USD", "SPELL-USD", "ELF-USD", "CTSI-USD",
+    "BNT-USD", "AGIX-USD", "FET-USD", "ILV-USD", "DASH-USD", "LPT-USD", "MASK-USD", "DGB-USD", "ACA-USD", "SXP-USD",
+    "REN-USD", "HNT-USD", "RSR-USD", "XNO-USD", "PERP-USD", "ALPHA-USD", "STORJ-USD", "POND-USD", "ARDR-USD", "RAD-USD",
+    "MLN-USD", "CVC-USD", "TLM-USD", "TRU-USD", "STRAX-USD", "GTC-USD", "IDEX-USD", "BOND-USD", "VTHO-USD", "BTS-USD",
+    "POLY-USD", "DENT-USD", "UBT-USD", "FORTH-USD", "MC-USD", "SUPER-USD", "POLS-USD", "PNT-USD", "MTL-USD", "GLCH-USD"
+]
+
+symbols = bist_symbols if market_type == "BIST 100" else crypto_symbols
+page = st.sidebar.selectbox("Sayfa Seçiniz", ["Tahminleme", "Turtle Trade Stratejisi"])
 
 if page == "Tahminleme":
     selected_symbol = st.selectbox("Hisse Seçiniz:", symbols, key="selected_symbol_tahminleme")
