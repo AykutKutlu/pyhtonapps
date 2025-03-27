@@ -11,9 +11,9 @@ from xgboost import XGBRegressor
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 
-st.title("📈 BIST 100 Hisse Tahminleme ve Turtle Trade Stratejisi")
+st.title("BIST 100 Hisse Tahminleme ve Turtle Trade Stratejisi")
 
-page = st.sidebar.selectbox("📌 Sayfa Seçiniz", ["Tahminleme", "Turtle Trade Stratejisi"])
+page = st.sidebar.selectbox("Sayfa Seçiniz", ["Tahminleme", "Turtle Trade Stratejisi"])
 
 symbols = [
     "GARAN.IS", "KCHOL.IS", "THYAO.IS", "FROTO.IS", "ISCTR.IS", "BIMAS.IS", "TUPRS.IS", "ENKAI.IS", "ASELS.IS", "AKBNK.IS", 
@@ -27,16 +27,17 @@ symbols = [
     "YEOTK.IS", "BINHO1000.IS", "KARSN.IS", "TMSN.IS", "SKBNK.IS", "FENER.IS", "CANTE.IS", "TUKAS.IS", "KTLEV.IS", "ADEL.IS", 
     "BERA.IS", "ODAS.IS", "AKFGY.IS", "GOLTS.IS", "ARDYZ.IS", "BJKAS.IS", "PEKGY.IS", "PAPIL.IS", "LMKDC.IS", "ALTNY.IS"
 ]
-selected_symbol = st.selectbox("📊 Hisse Seçiniz:", symbols)
+
 
 if page == "Tahminleme":
-    model_type = st.selectbox("📡 Tahmin Modeli Seçiniz:", ["ARIMA", "ETS", "Holt-Winters", "XGBoost", "LSTM"])
-    forecast_days = st.slider("📆 Tahmin Edilecek Gün Sayısı:", min_value=10, max_value=60, value=30)
-    
+    selected_symbol = st.selectbox("Hisse Seçiniz:", symbols, key="selected_symbol_tahminleme")
+    model_type = st.selectbox("Tahmin Modeli Seçiniz:", ["ARIMA", "ETS", "Holt-Winters", "XGBoost", "LSTM"], key="model_type")
+    forecast_days = st.slider("Tahmin Edilecek Gün Sayısı:", min_value=10, max_value=60, value=30)
+
     if model_type == "ARIMA":
-                    p = st.number_input("🔢 AR (p) Değeri:", min_value=0, value=1)
-                    d = st.number_input("🔢 Fark Düzeyi (d):", min_value=0, value=1)
-                    q = st.number_input("🔢 MA (q) Değeri:", min_value=0, value=1)
+        p = st.number_input("AR (p) Değeri:", min_value=0, value=1)
+        d = st.number_input("Fark Düzeyi (d):", min_value=0, value=1)
+        q = st.number_input("MA (q) Değeri:", min_value=0, value=1)
 
     timeframes = [7, 14, 30]
     use_volume = st.checkbox("📊 İşlem Hacmini Kullan")
@@ -61,9 +62,9 @@ if page == "Tahminleme":
                 if use_technical:
                     features['RSI'] = 100 - (100 / (1 + ts_data.pct_change().rolling(14).mean()))
                 features.dropna(inplace=True)
-                
+
                 if model_type == "ARIMA":
-                    model = ARIMA(ts_data, order=(1, 1, 1)).fit()
+                    model = ARIMA(ts_data, order=(p, d, q)).fit()
                     forecast = model.forecast(steps=forecast_days)
                 elif model_type == "ETS":
                     model = ExponentialSmoothing(ts_data, trend='add').fit()
@@ -72,53 +73,84 @@ if page == "Tahminleme":
                     model = ExponentialSmoothing(ts_data, trend='add', seasonal='add', seasonal_periods=5).fit()
                     forecast = model.forecast(steps=forecast_days)
                 elif model_type == "XGBoost":
-                    X = features.iloc[:-forecast_days]
-                    y = ts_data.iloc[:-forecast_days]
-                    min_len = min(len(features), len(ts_data))
-                    X = features.iloc[:min_len]
-                    y = ts_data.iloc[:min_len]
-                    model = XGBRegressor(objective='reg:squarederror')
+                    X = pd.DataFrame(index=ts_data.index)
+                    X["Lag_1"] = ts_data.shift(1)
+                    X["Lag_2"] = ts_data.shift(2)
+                    X["Lag_3"] = ts_data.shift(3)
+                    X.dropna(inplace=True)
+
+                    y = ts_data.loc[X.index]  # Hedef değişken
+
+                    model = XGBRegressor(n_estimators=100, learning_rate=0.1, objective='reg:squarederror')
                     model.fit(X, y)
-                    forecast = model.predict(features.iloc[-forecast_days:])
+
+                    # Gelecek günler için tahmin verisini oluştur
+                    last_values = X.iloc[-1].values.reshape(1, -1)
+                    forecast = []
+                    for _ in range(forecast_days):
+                        next_pred = model.predict(last_values)[0]
+                        forecast.append(next_pred)
+                        last_values = np.roll(last_values, -1)  # Yeni değeri ekleyerek kaydır
+                        last_values[0, -1] = next_pred
+
                 elif model_type == "LSTM":
-                    X = features.values.reshape(-1, 1, features.shape[1])
-                    y = ts_data.values
-                    min_len = min(len(features), len(ts_data))
-                    X = features.iloc[:min_len].values.reshape(-1, 1, features.shape[1])
-                    y = ts_data.iloc[:min_len].values
-                    model = Sequential([
-                        LSTM(50, activation='relu', input_shape=(1, features.shape[1])),
-                        Dense(1)
-                    ])
-                    model.compile(optimizer='adam', loss='mse')
-                    model.fit(X, y, epochs=20, batch_size=16, verbose=0)
-                    forecast = model.predict(features.iloc[-forecast_days:].values.reshape(-1, 1, features.shape[1]))
-                    forecast = forecast.flatten()
-                
+                    from sklearn.preprocessing import MinMaxScaler
+
+                    scaler = MinMaxScaler(feature_range=(0, 1))
+                    ts_scaled = scaler.fit_transform(ts_data.values.reshape(-1, 1))
+
+                    X_train, y_train = [], []
+                    lookback = 10  # LSTM için geçmiş veri uzunluğu
+                    for i in range(lookback, len(ts_scaled)):
+                        X_train.append(ts_scaled[i - lookback:i, 0])
+                        y_train.append(ts_scaled[i, 0])
+
+                    X_train, y_train = np.array(X_train), np.array(y_train)
+                    X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
+
+                    model = Sequential()
+                    model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+                    model.add(LSTM(units=50, return_sequences=False))
+                    model.add(Dense(units=25))
+                    model.add(Dense(units=1))
+
+                    model.compile(optimizer='adam', loss='mean_squared_error')
+                    model.fit(X_train, y_train, epochs=20, batch_size=16, verbose=0)
+
+                    # Gelecek günler için tahmin verisini oluştur
+                    last_values = ts_scaled[-lookback:].reshape(1, lookback, 1)
+                    forecast = []
+                    for _ in range(forecast_days):
+                        next_pred = model.predict(last_values)[0][0]
+                        forecast.append(next_pred)
+                        last_values = np.roll(last_values, -1, axis=1)  # Yeni değeri kaydır
+                        last_values[0, -1, 0] = next_pred
+
+                    forecast = scaler.inverse_transform(np.array(forecast).reshape(-1, 1)).flatten()
+
                 forecast_dates = pd.date_range(start=ts_data.index[-1], periods=forecast_days, freq='B')
                 forecast_df = pd.DataFrame({'Date': forecast_dates, 'Forecast': forecast})
-                
+
                 fig, ax = plt.subplots(figsize=(10, 5))
                 ax.plot(ts_data.index[-60:], ts_data.values[-60:], label="Gerçek Veri", color='blue', linewidth=2)
                 ax.plot(forecast_dates, forecast, label="Tahmin", color='red', linestyle='dashed', linewidth=2)
-                ax.set_title(f"{selected_symbol} Tahmini ({model_type})", fontsize=14)
                 ax.legend()
                 ax.grid()
                 st.pyplot(fig)
-                
-                st.subheader("📋 Tahmin Sonuçları")
-                st.dataframe(forecast_df.head())
+
                 csv = forecast_df.to_csv(index=False).encode('utf-8')
                 st.download_button(label="📥 Tahminleri İndir", data=csv, file_name=f"{selected_symbol}_tahminler.csv", mime='text/csv')
+
         except Exception as e:
             st.error(f"⚠️ Bir hata oluştu: {e}")
 
+
 elif page == "Turtle Trade Stratejisi":
-    symbol = st.selectbox("📊 Hisse Seçimi:", symbols, key="turtle_symbol")
-    max_window = st.slider("📈 Max Noktaları İçin Gün Sayısı:", min_value=5, max_value=50, value=20)
-    min_window = st.slider("📉 Min Noktaları İçin Gün Sayısı:", min_value=5, max_value=50, value=20)
+    symbol = st.selectbox("Hisse Seçimi:", symbols, key="turtle_symbol")
+    max_window = st.slider("Max Noktaları İçin Gün Sayısı:", min_value=5, max_value=50, value=20)
+    min_window = st.slider("Min Noktaları İçin Gün Sayısı:", min_value=5, max_value=50, value=20)
     
-    if st.button("📊 Stratejiyi Göster"):
+    if st.button("Stratejiyi Göster"):
         try:
             interval = "1d"
             stock_data = yf.download(symbol, period="360d", interval=interval)
@@ -132,11 +164,11 @@ elif page == "Turtle Trade Stratejisi":
             
             missing_cols = [col for col in expected_cols if col not in stock_data.columns]
             if missing_cols:
-                st.error(f"⚠️ Eksik veri sütunları: {missing_cols}. Veri kaynağında problem olabilir.")
+                st.error(f"Eksik veri sütunları: {missing_cols}. Veri kaynağında problem olabilir.")
                 st.stop()
             
             if stock_data.empty or stock_data.isnull().all().all():
-                st.error("⚠️ Veri çekilemedi! Lütfen farklı bir hisse seçin veya veri kaynağını kontrol edin.")
+                st.error("Veri çekilemedi! Lütfen farklı bir hisse seçin veya veri kaynağını kontrol edin.")
                 st.stop()
             
             st.dataframe(stock_data.head())
@@ -167,7 +199,7 @@ elif page == "Turtle Trade Stratejisi":
                 y=buy_signals['High'], 
                 mode='markers', 
                 marker=dict(color='green', size=10, symbol='triangle-up'), 
-                name='📈 Alım Sinyali'
+                name='Alım Sinyali'
             ))
             
             fig.add_trace(go.Scatter(
@@ -175,11 +207,11 @@ elif page == "Turtle Trade Stratejisi":
                 y=sell_signals['Low'], 
                 mode='markers', 
                 marker=dict(color='red', size=10, symbol='triangle-down'), 
-                name='📉 Satış Sinyali'
+                name='Satış Sinyali'
             ))
             
             fig.update_layout(title=f"{symbol} Turtle Trade Stratejisi ({'1 Day'})", xaxis_title="Tarih", yaxis_title="Fiyat")
             st.plotly_chart(fig)
             
         except Exception as e:
-            st.error(f"⚠️ Bir hata oluştu: {e}")
+            st.error(f"Bir hata oluştu: {e}")
