@@ -449,15 +449,25 @@ elif page == "Stratejiler":
             if "MACD Trend Tracking" in strategies:
                 fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MACD'], mode='lines', name='MACD'))
                 fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Signal_Line'], mode='lines', name='Signal Line'))
-
-                buy_signals = (stock_data['MACD'] > stock_data['Signal_Line']) & (stock_data['MACD'].shift(1) <= stock_data['Signal_Line'].shift(1))
-                sell_signals = (stock_data['MACD'] < stock_data['Signal_Line']) & (stock_data['MACD'].shift(1) >= stock_data['Signal_Line'].shift(1))
-
-                stock_data['Buy_Signal'] = np.where(buy_signals, stock_data['Close'], np.nan)
-                stock_data['Sell_Signal'] = np.where(sell_signals, stock_data['Close'], np.nan)
-
-                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Buy_Signal'], mode='markers', marker=dict(color='green', size=10, symbol='triangle-up'), name='Buy Signal'))
-                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Sell_Signal'], mode='markers', marker=dict(color='red', size=10, symbol='triangle-down'), name='Sell Signal'))
+                
+                buy_signals[stock_data['MACD'] > stock_data['Signal_Line']] = stock_data['Close']
+                sell_signals[stock_data['MACD'] < stock_data['Signal_Line']] = stock_data['Close']
+            
+            fig.add_trace(go.Scatter(
+                x=buy_signals.dropna().index, 
+                y=buy_signals.dropna(), 
+                mode='markers', 
+                marker=dict(color='green', size=10, symbol='triangle-up'), 
+                name='Alım Sinyali'
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=sell_signals.dropna().index, 
+                y=sell_signals.dropna(), 
+                mode='markers', 
+                marker=dict(color='red', size=10, symbol='triangle-down'), 
+                name='Satış Sinyali'
+            ))
 
             
             fig.update_layout(title=f"{symbol} - Stratejiler", xaxis_title="Tarih", yaxis_title="Fiyat")
