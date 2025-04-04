@@ -11,7 +11,7 @@ from xgboost import XGBRegressor
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 
-st.title("📈 Hisse & Kripto Tahminleme ve Turtle Trade Stratejisi")
+st.title("📈 Hisse & Kripto Tahminleme ve Stratejiler")
 
 market_type = st.selectbox("Piyasa Seçiniz", ["BIST 100", "Kripto Paralar"])
 
@@ -44,7 +44,7 @@ crypto_symbols = [
 ]
 
 symbols = bist_symbols if market_type == "BIST 100" else crypto_symbols
-page = st.sidebar.selectbox("Sayfa Seçiniz", ["Tahminleme", "Turtle Trade Stratejisi"])
+page = st.sidebar.selectbox("Sayfa Seçiniz", ["Tahminleme", "Stratejiler"])
 
 if page == "Tahminleme":
     selected_symbol = st.selectbox("Hisse Seçiniz:", symbols, key="selected_symbol_tahminleme")
@@ -162,11 +162,14 @@ if page == "Tahminleme":
             st.error(f"⚠️ Bir hata oluştu: {e}")
 
 
-elif page == "Turtle Trade Stratejisi":
-    symbol = st.selectbox("Hisse Seçimi:", symbols, key="turtle_symbol")
-    max_window = st.slider("Max Noktaları İçin Gün Sayısı:", min_value=5, max_value=50, value=20)
-    min_window = st.slider("Min Noktaları İçin Gün Sayısı:", min_value=5, max_value=50, value=20)
-    
+elif page == "Stratejiler":
+    symbol = st.selectbox("Hisse Seçimi:", symbols)
+    strategies = st.multiselect("Strateji Seçimi:", [
+        "Turtle Trade", "Moving Average Crossover", "Donchian Channel Breakout", 
+        "Bollinger Bands Breakout", "Parabolic SAR", "Keltner Channel Breakout", 
+        "Ichimoku Cloud", "SuperTrend Indicator", "RSI Trend Strategy", "MACD Trend Tracking"
+    ])
+
     if st.button("Stratejiyi Göster"):
         try:
             interval = "1d"
@@ -188,47 +191,276 @@ elif page == "Turtle Trade Stratejisi":
                 st.error("Veri çekilemedi! Lütfen farklı bir hisse seçin veya veri kaynağını kontrol edin.")
                 st.stop()
             
-            st.dataframe(stock_data.head())
-            
             stock_data.fillna(method="ffill", inplace=True)
             stock_data.fillna(method="bfill", inplace=True)
+            def calculate_parabolic_sar(data, af=0.02, max_af=0.2):
+                sar = pd.Series(index=data.index)
+                trend = 1
+                ep = data['High'][0]
+                af_value = af
+                sar[0] = data['Low'][0]
+                for i in range(1, len(data)):
+                    sar[i] = sar[i-1] + af_value * (ep - sar[i-1])
+        
+                    if trend == 1:
+                        if data['Low'][i] < sar[i]:
+                            trend = -1
+                            sar[i] = ep
+                            ep = data['Low'][i]
+                            af_value = af
+                        else:
+                            ep = max(ep, data['High'][i])
+                    elif trend == -1:
+                        if data['High'][i] > sar[i]:
+                            trend = 1
+                            sar[i] = ep
+                            ep = data['High'][i]
+                            af_value = af
+                        else:
+                            ep = min(ep, data['Low'][i])
+
+                    if af_value < max_af:
+                        af_value += af
+    
+                return sar
+
+
             
-            stock_data['HighMax'] = stock_data['High'].rolling(window=max_window).max()
-            stock_data['LowMin'] = stock_data['Low'].rolling(window=min_window).min()
-            
-            buy_signals = stock_data[stock_data['High'] >= stock_data['HighMax']]
-            sell_signals = stock_data[stock_data['Low'] <= stock_data['LowMin']]
-            
+            stock_data['SMA_20'] = stock_data['Close'].rolling(window=20).mean()
+            stock_data['SMA_50'] = stock_data['Close'].rolling(window=50).mean()
+            stock_data['SMA_200'] = stock_data['Close'].rolling(window=200).mean()
+            stock_data['EMA_20'] = stock_data['Close'].ewm(span=20, adjust=False).mean()
+            stock_data['EMA_50'] = stock_data['Close'].ewm(span=50, adjust=False).mean()
+            stock_data['Rolling_STD'] = stock_data['Close'].rolling(window=20).std()
+            stock_data['Upper_Band'] = stock_data['SMA_20'] + (stock_data['Rolling_STD'] * 2)
+            stock_data['Lower_Band'] = stock_data['SMA_20'] - (stock_data['Rolling_STD'] * 2)
+            stock_data['HighMax'] = stock_data['High'].rolling(window=20).max()
+            stock_data['LowMin'] = stock_data['Low'].rolling(window=20).min()
+            stock_data['RSI'] = 100 - (100 / (1 + stock_data['Close'].pct_change().rolling(14).mean()))
+            stock_data['MACD'] = stock_data['Close'].ewm(span=12, adjust=False).mean() - stock_data['Close'].ewm(span=26, adjust=False).mean()
+            stock_data['Signal_Line'] = stock_data['MACD'].ewm(span=9, adjust=False).mean()
+            stock_data['Parabolic_SAR'] = calculate_parabolic_sar(stock_data)
             fig = go.Figure()
             fig.add_trace(go.Candlestick(
-                x=stock_data.index,
-                open=stock_data['Open'],
-                high=stock_data['High'],
-                low=stock_data['Low'],
-                close=stock_data['Close'],
-                name='Mum Grafiği'
-            ))
-            fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['HighMax'], mode='lines', name=f'{max_window} Günlük En Yüksek'))
-            fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['LowMin'], mode='lines', name=f'{min_window} Günlük En Düşük'))
+                x=stock_data.index, open=stock_data['Open'], high=stock_data['High'], 
+                low=stock_data['Low'], close=stock_data['Close'], name='Mum Grafiği'))
             
-            fig.add_trace(go.Scatter(
-                x=buy_signals.index, 
-                y=buy_signals['High'], 
-                mode='markers', 
-                marker=dict(color='green', size=10, symbol='triangle-up'), 
-                name='Alım Sinyali'
-            ))
+            buy_signals = pd.Series(index=stock_data.index, dtype="float64")
+            sell_signals = pd.Series(index=stock_data.index, dtype="float64")
             
-            fig.add_trace(go.Scatter(
-                x=sell_signals.index, 
-                y=sell_signals['Low'], 
-                mode='markers', 
-                marker=dict(color='red', size=10, symbol='triangle-down'), 
-                name='Satış Sinyali'
-            ))
+            if "Turtle Trade" in strategies or "Donchian Channel Breakout" in strategies:
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['HighMax'], mode='lines', name='Yüksek Nokta'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['LowMin'], mode='lines', name='Düşük Nokta'))
+                
+                buy_signals[stock_data['High'] >= stock_data['HighMax']] = stock_data['High']
+                sell_signals[stock_data['Low'] <= stock_data['LowMin']] = stock_data['Low']
+                
+            if "Moving Average Crossover" in strategies:
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['SMA_50'], mode='lines', name='50 Günlük SMA'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['SMA_200'], mode='lines', name='200 Günlük SMA'))
+    
+                buy_signals = (stock_data['SMA_50'] > stock_data['SMA_200']) & (stock_data['SMA_50'].shift(1) <= stock_data['SMA_200'].shift(1))
+                sell_signals = (stock_data['SMA_50'] < stock_data['SMA_200']) & (stock_data['SMA_50'].shift(1) >= stock_data['SMA_200'].shift(1))
+    
+                stock_data['Buy_Signal'] = np.where(buy_signals, stock_data['Close'], np.nan)
+                stock_data['Sell_Signal'] = np.where(sell_signals, stock_data['Close'], np.nan)
+    
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Buy_Signal'], mode='markers', marker=dict(color='green', size=10, symbol='triangle-up'), name='Buy Signal'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Sell_Signal'], mode='markers', marker=dict(color='red', size=10, symbol='triangle-down'), name='Sell Signal'))
+
             
-            fig.update_layout(title=f"{symbol} Turtle Trade Stratejisi ({'1 Day'})", xaxis_title="Tarih", yaxis_title="Fiyat")
+            if "Bollinger Bands Breakout" in strategies:
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Upper_Band'], mode='lines', name='Üst Band'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Lower_Band'], mode='lines', name='Alt Band'))
+                
+                buy_signals[stock_data['Close'] > stock_data['Upper_Band']] = stock_data['Close']
+                sell_signals[stock_data['Close'] < stock_data['Lower_Band']] = stock_data['Close']
+            if "Parabolic SAR" in strategies:
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(
+                    x=stock_data.index, open=stock_data['Open'], high=stock_data['High'],
+                    low=stock_data['Low'], close=stock_data['Close'], name='Mum Grafiği'
+                ))
+
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Parabolic_SAR'], 
+                                        mode='markers', marker=dict(color='purple', size=4, symbol='circle'),
+                                        name='Parabolic SAR'))
+
+                buy_signal = stock_data['Close'] > stock_data['Parabolic_SAR']
+                sell_signal = stock_data['Close'] < stock_data['Parabolic_SAR']
+
+                fig.add_trace(go.Scatter(x=stock_data.index[buy_signal], 
+                                        y=stock_data['Close'][buy_signal], 
+                                        mode='markers', 
+                                        marker=dict(color='green', size=10, symbol='triangle-up'), 
+                                        name='Buy Signal'))
+
+                fig.add_trace(go.Scatter(x=stock_data.index[sell_signal], 
+                                        y=stock_data['Close'][sell_signal], 
+                                        mode='markers', 
+                                        marker=dict(color='red', size=10, symbol='triangle-down'), 
+                                        name='Sell Signal'))
+
+                fig.update_layout(title=f"{symbol} - Parabolic SAR", xaxis_title="Tarih", yaxis_title="Fiyat")
+                st.plotly_chart(fig)
+
+            if "Keltner Channel Breakout" in strategies:
+                stock_data['ATR'] = stock_data['High'] - stock_data['Low']
+                stock_data['Upper_Keltner'] = stock_data['SMA_20'] + (stock_data['ATR'].rolling(window=20).mean() * 1.5)
+                stock_data['Lower_Keltner'] = stock_data['SMA_20'] - (stock_data['ATR'].rolling(window=20).mean() * 1.5)
+
+                buy_signals_keltner = stock_data[stock_data['Close'] > stock_data['Upper_Keltner']]
+                sell_signals_keltner = stock_data[stock_data['Close'] < stock_data['Lower_Keltner']]
+
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Upper_Keltner'], mode='lines', name='Üst Keltner Kanalı'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Lower_Keltner'], mode='lines', name='Alt Keltner Kanalı'))
+
+                fig.add_trace(go.Scatter(
+                    x=buy_signals_keltner.index, 
+                    y=buy_signals_keltner['Close'], 
+                    mode='markers', 
+                    marker=dict(color='green', size=10, symbol='triangle-up'), 
+                    name='Alım Sinyali'
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=sell_signals_keltner.index, 
+                    y=sell_signals_keltner['Close'], 
+                    mode='markers', 
+                    marker=dict(color='red', size=10, symbol='triangle-down'), 
+                    name='Satış Sinyali'
+                ))
+
+            if "Ichimoku Cloud" in strategies:
+                stock_data['Tenkan_Sen'] = (stock_data['High'].rolling(window=9).max() + stock_data['Low'].rolling(window=9).min()) / 2
+                stock_data['Kijun_Sen'] = (stock_data['High'].rolling(window=26).max() + stock_data['Low'].rolling(window=26).min()) / 2
+                stock_data['Senkou_Span_A'] = ((stock_data['Tenkan_Sen'] + stock_data['Kijun_Sen']) / 2).shift(26)
+                stock_data['Senkou_Span_B'] = ((stock_data['High'].rolling(window=52).max() + stock_data['Low'].rolling(window=52).min()) / 2).shift(26)
+                stock_data['Chikou_Span'] = stock_data['Close'].shift(-26)
+
+                buy_signals_ichimoku = stock_data[stock_data['Close'] > stock_data['Senkou_Span_A']]
+                sell_signals_ichimoku = stock_data[stock_data['Close'] < stock_data['Senkou_Span_B']]
+
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Senkou_Span_A'], mode='lines', name='Senkou Span A'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Senkou_Span_B'], mode='lines', name='Senkou Span B'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Tenkan_Sen'], mode='lines', name='Tenkan Sen'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Kijun_Sen'], mode='lines', name='Kijun Sen'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Chikou_Span'], mode='lines', name='Chikou Span'))
+
+                fig.add_trace(go.Scatter(
+                    x=buy_signals_ichimoku.index, 
+                    y=buy_signals_ichimoku['Close'], 
+                    mode='markers', 
+                    marker=dict(color='green', size=10, symbol='triangle-up'), 
+                    name='Alım Sinyali'
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=sell_signals_ichimoku.index, 
+                    y=sell_signals_ichimoku['Close'], 
+                    mode='markers', 
+                    marker=dict(color='red', size=10, symbol='triangle-down'), 
+                    name='Satış Sinyali'
+                ))
+
+            if "SuperTrend Indicator" in strategies:
+                atr_period = 14
+                multiplier = 2.5
+                def Supertrend(df, atr_period, multiplier):
+                    high = df['High']
+                    low = df['Low']
+                    close = df['Close']
+    
+                    price_diffs = [high - low, 
+                                high - close.shift(), 
+                                close.shift() - low]
+                    true_range = pd.concat(price_diffs, axis=1)
+                    true_range = true_range.abs().max(axis=1)
+    
+                    atr = true_range.ewm(alpha=1/atr_period, min_periods=atr_period).mean()
+    
+                    hl2 = (high + low) / 2
+    
+                    final_upperband = hl2 + (multiplier * atr)
+                    final_lowerband = hl2 - (multiplier * atr)
+    
+                    supertrend = [True] * len(df)
+    
+                    for i in range(1, len(df.index)):
+                        curr, prev = i, i-1
+        
+                        if close[curr] > final_upperband[prev]:
+                            supertrend[curr] = True
+                        elif close[curr] < final_lowerband[prev]:
+                            supertrend[curr] = False
+                        else:
+                            supertrend[curr] = supertrend[prev]
+            
+                            if supertrend[curr] == True and final_lowerband[curr] < final_lowerband[prev]:
+                                final_lowerband[curr] = final_lowerband[prev]
+                            if supertrend[curr] == False and final_upperband[curr] > final_upperband[prev]:
+                                final_upperband[curr] = final_upperband[prev]
+
+                        if supertrend[curr] == True:
+                            final_upperband[curr] = np.nan
+                        else:
+                            final_lowerband[curr] = np.nan
+    
+                    return pd.DataFrame({
+                        'Supertrend': supertrend,
+                        'Final Lowerband': final_lowerband,
+                        'Final Upperband': final_upperband
+                    }, index=df.index)
+
+                supertrend_data = Supertrend(stock_data, atr_period, multiplier)
+
+                stock_data = stock_data.join(supertrend_data)
+
+                buy_signals_supertrend = stock_data[stock_data['Close'] > stock_data['Final Upperband']]
+                sell_signals_supertrend = stock_data[stock_data['Close'] < stock_data['Final Lowerband']]
+
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Final Lowerband'], mode='lines', name='SuperTrend Lower'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Final Upperband'], mode='lines', name='SuperTrend Upper'))
+
+                fig.add_trace(go.Scatter(
+                    x=buy_signals_supertrend.index, 
+                    y=buy_signals_supertrend['Close'], 
+                    mode='markers', 
+                    marker=dict(color='green', size=10, symbol='triangle-up'), 
+                    name='Buy Signal'
+                ))
+
+                fig.add_trace(go.Scatter(
+                    x=sell_signals_supertrend.index, 
+                    y=sell_signals_supertrend['Close'], 
+                    mode='markers', 
+                    marker=dict(color='red', size=10, symbol='triangle-down'), 
+                    name='Sell Signal'
+                ))
+
+
+
+            if "RSI Trend Strategy" in strategies:
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['RSI'], mode='lines', name='RSI (14)'))
+                
+                buy_signals[stock_data['RSI'] < -0.30] = stock_data['Close']
+                sell_signals[stock_data['RSI'] > 0.70] = stock_data['Close']
+            
+            if "MACD Trend Tracking" in strategies:
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MACD'], mode='lines', name='MACD'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Signal_Line'], mode='lines', name='Signal Line'))
+
+                buy_signals = (stock_data['MACD'] > stock_data['Signal_Line']) & (stock_data['MACD'].shift(1) <= stock_data['Signal_Line'].shift(1))
+                sell_signals = (stock_data['MACD'] < stock_data['Signal_Line']) & (stock_data['MACD'].shift(1) >= stock_data['Signal_Line'].shift(1))
+
+                stock_data['Buy_Signal'] = np.where(buy_signals, stock_data['Close'], np.nan)
+                stock_data['Sell_Signal'] = np.where(sell_signals, stock_data['Close'], np.nan)
+
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Buy_Signal'], mode='markers', marker=dict(color='green', size=10, symbol='triangle-up'), name='Buy Signal'))
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['Sell_Signal'], mode='markers', marker=dict(color='red', size=10, symbol='triangle-down'), name='Sell Signal'))
+
+            
+            fig.update_layout(title=f"{symbol} - Stratejiler", xaxis_title="Tarih", yaxis_title="Fiyat")
             st.plotly_chart(fig)
-            
         except Exception as e:
-            st.error(f"Bir hata oluştu: {e}")
+            st.error(f"Hata oluştu: {e}")
