@@ -1,11 +1,12 @@
 streamlit
-yfinance
 pandas
 numpy
 matplotlib
 plotly
+pyreadstat
+seaborn
+yfinance
 statsmodels
 scikit-learn
 xgboost
 tensorflow
-tensorflow-cpu
