@@ -11,56 +11,102 @@ from xgboost import XGBRegressor
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 
+st.set_page_config(page_title="Tahminleme ve Stratejiler", layout="wide")
+
+# CSS ile sidebar'ı sabit genişlikte ve her zaman açık tutmak için stil ekleyelim
+st.markdown(
+    """
+    <style>
+        /* Sidebar genişliğini sabitleyelim */
+        [data-testid="stSidebar"] {
+            min-width: 500px;
+            max-width: 500px;
+            width: 500px;
+            position: fixed;
+            z-index: 100;
+        }
+
+        /* Sağdaki ana içeriği yerleştirmek için margin-left ekleyelim */
+        .main {
+            margin-left: 500px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("📈 Hisse & Kripto Tahminleme ve Stratejiler")
 
-market_type = st.selectbox("Piyasa Seçiniz", ["BIST 100", "Kripto Paralar"])
+# SOL TARAFTA SEÇİMLER (sidebar)
+with st.sidebar:
+    st.header("⚙️ Ayarlar")
 
-bist_symbols = [
-    "GARAN.IS", "KCHOL.IS", "THYAO.IS", "FROTO.IS", "ISCTR.IS", "BIMAS.IS", "TUPRS.IS", "ENKAI.IS", "ASELS.IS", "AKBNK.IS", 
-    "YKBNK.IS", "VAKBN.IS", "TCELL.IS", "SAHOL.IS", "SASA.IS", "TTKOM.IS", "EREGL.IS", "CCOLA.IS", "PGSUS.IS", "SISE.IS", 
-    "AEFES.IS", "HALKB.IS", "TOASO.IS", "ARCLK.IS", "TAVHL.IS", "ASTOR.IS", "MGROS.IS", "TTRAK.IS", "AGHOL.IS", "OYAKC.IS", 
-    "KOZAL.IS", "ENJSA.IS", "BRSAN.IS", "TURSG.IS", "GUBRF.IS", "MPARK.IS", "OTKAR.IS", "BRYAT.IS", "ISMEN.IS", "PETKM.IS", 
-    "ULKER.IS", "CLEBI.IS", "DOAS.IS", "AKSEN.IS", "ANSGR.IS", "ALARK.IS", "EKGYO.IS", "TABGD.IS", "RGYAS.IS", "DOHOL.IS", 
-    "TSKB.IS", "ENERY.IS", "KONYA.IS", "EGEEN.IS", "AKSA.IS", "CIMSA.IS", "HEKTS.IS", "MAVI.IS", "VESBE.IS", "KONTR.IS", 
-    "TKFEN.IS", "BTCIM.IS", "ECILC.IS", "KCAER.IS", "KRDMD.IS", "SOKM.IS", "KOZAA.IS", "SMRTG.IS", "CWENE.IS", "ZOREN.IS", 
-    "EUPWR.IS", "REDR.IS", "VESTL.IS", "MIATK.IS", "ALFAS.IS", "GESAN.IS", "OBAM.IS", "AKFYE.IS", "KLSER.IS", "AGROT.IS", 
-    "YEOTK.IS", "BINHO1000.IS", "KARSN.IS", "TMSN.IS", "SKBNK.IS", "FENER.IS", "CANTE.IS", "TUKAS.IS", "KTLEV.IS", "ADEL.IS", 
-    "BERA.IS", "ODAS.IS", "AKFGY.IS", "GOLTS.IS", "ARDYZ.IS", "BJKAS.IS", "PEKGY.IS", "PAPIL.IS", "LMKDC.IS", "ALTNY.IS"
-]
+    market_type = st.selectbox("📊 Piyasa Seçiniz", ["BIST 100", "Kripto Paralar"])
 
-crypto_symbols = [
-    "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "AVAX-USD", "DOT-USD", "MATIC-USD",
-    "LTC-USD", "BCH-USD", "LINK-USD", "ICP-USD", "ARB-USD", "XLM-USD", "HBAR-USD", "FIL-USD", "VET-USD", "INJ-USD",
-    "APT-USD", "PEPE-USD", "RNDR-USD", "QNT-USD", "ALGO-USD", "IMX-USD", "AAVE-USD", "GRT-USD", "MKR-USD", "EGLD-USD",
-    "FTM-USD", "THETA-USD", "SAND-USD", "AXS-USD", "XEC-USD", "KAS-USD", "XTZ-USD", "NEAR-USD", "CHZ-USD", "LDO-USD",
-    "CRV-USD", "RUNE-USD", "FLOW-USD", "BSV-USD", "STX-USD", "ENS-USD", "GALA-USD", "KAVA-USD", "MINA-USD", "TWT-USD",
-    "FXS-USD", "ZEC-USD", "SUSHI-USD", "ONE-USD", "CVX-USD", "OSMO-USD", "ROSE-USD", "CELO-USD", "GMT-USD", "NEXO-USD",
-    "DYDX-USD", "LRC-USD", "AUDIO-USD", "COMP-USD", "YFI-USD", "BICO-USD", "JASMY-USD", "IOST-USD", "ANKR-USD", "ENS-USD",
-    "BAL-USD", "API3-USD", "COTI-USD", "BAND-USD", "OCEAN-USD", "GLMR-USD", "KDA-USD", "SPELL-USD", "ELF-USD", "CTSI-USD",
-    "BNT-USD", "AGIX-USD", "FET-USD", "ILV-USD", "DASH-USD", "LPT-USD", "MASK-USD", "DGB-USD", "ACA-USD", "SXP-USD",
-    "REN-USD", "HNT-USD", "RSR-USD", "XNO-USD", "PERP-USD", "ALPHA-USD", "STORJ-USD", "POND-USD", "ARDR-USD", "RAD-USD",
-    "MLN-USD", "CVC-USD", "TLM-USD", "TRU-USD", "STRAX-USD", "GTC-USD", "IDEX-USD", "BOND-USD", "VTHO-USD", "BTS-USD",
-    "POLY-USD", "DENT-USD", "UBT-USD", "FORTH-USD", "MC-USD", "SUPER-USD", "POLS-USD", "PNT-USD", "MTL-USD", "GLCH-USD"
-]
+    bist_symbols = [
+        "GARAN.IS", "KCHOL.IS", "THYAO.IS", "FROTO.IS", "ISCTR.IS", "BIMAS.IS", "TUPRS.IS", "ENKAI.IS", "ASELS.IS", "AKBNK.IS", 
+        "YKBNK.IS", "VAKBN.IS", "TCELL.IS", "SAHOL.IS", "SASA.IS", "TTKOM.IS", "EREGL.IS", "CCOLA.IS", "PGSUS.IS", "SISE.IS", 
+        "AEFES.IS", "HALKB.IS", "TOASO.IS", "ARCLK.IS", "TAVHL.IS", "ASTOR.IS", "MGROS.IS", "TTRAK.IS", "AGHOL.IS", "OYAKC.IS", 
+        "KOZAL.IS", "ENJSA.IS", "BRSAN.IS", "TURSG.IS", "GUBRF.IS", "MPARK.IS", "OTKAR.IS", "BRYAT.IS", "ISMEN.IS", "PETKM.IS", 
+        "ULKER.IS", "CLEBI.IS", "DOAS.IS", "AKSEN.IS", "ANSGR.IS", "ALARK.IS", "EKGYO.IS", "TABGD.IS", "RGYAS.IS", "DOHOL.IS", 
+        "TSKB.IS", "ENERY.IS", "KONYA.IS", "EGEEN.IS", "AKSA.IS", "CIMSA.IS", "HEKTS.IS", "MAVI.IS", "VESBE.IS", "KONTR.IS", 
+        "TKFEN.IS", "BTCIM.IS", "ECILC.IS", "KCAER.IS", "KRDMD.IS", "SOKM.IS", "KOZAA.IS", "SMRTG.IS", "CWENE.IS", "ZOREN.IS", 
+        "EUPWR.IS", "REDR.IS", "VESTL.IS", "MIATK.IS", "ALFAS.IS", "GESAN.IS", "OBAM.IS", "AKFYE.IS", "KLSER.IS", "AGROT.IS", 
+        "YEOTK.IS", "BINHO1000.IS", "KARSN.IS", "TMSN.IS", "SKBNK.IS", "FENER.IS", "CANTE.IS", "TUKAS.IS", "KTLEV.IS", "ADEL.IS", 
+        "BERA.IS", "ODAS.IS", "AKFGY.IS", "GOLTS.IS", "ARDYZ.IS", "BJKAS.IS", "PEKGY.IS", "PAPIL.IS", "LMKDC.IS", "ALTNY.IS"
+    ]
 
-symbols = bist_symbols if market_type == "BIST 100" else crypto_symbols
-page = st.sidebar.selectbox("Sayfa Seçiniz", ["Tahminleme", "Stratejiler"])
+    crypto_symbols = [
+        "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "AVAX-USD", "DOT-USD", "MATIC-USD",
+        "LTC-USD", "BCH-USD", "LINK-USD", "ICP-USD", "ARB-USD", "XLM-USD", "HBAR-USD", "FIL-USD", "VET-USD", "INJ-USD",
+        "APT-USD", "PEPE-USD", "RNDR-USD", "QNT-USD", "ALGO-USD", "IMX-USD", "AAVE-USD", "GRT-USD", "MKR-USD", "EGLD-USD",
+        "FTM-USD", "THETA-USD", "SAND-USD", "AXS-USD", "XEC-USD", "KAS-USD", "XTZ-USD", "NEAR-USD", "CHZ-USD", "LDO-USD",
+        "CRV-USD", "RUNE-USD", "FLOW-USD", "BSV-USD", "STX-USD", "ENS-USD", "GALA-USD", "KAVA-USD", "MINA-USD", "TWT-USD",
+        "FXS-USD", "ZEC-USD", "SUSHI-USD", "ONE-USD", "CVX-USD", "OSMO-USD", "ROSE-USD", "CELO-USD", "GMT-USD", "NEXO-USD",
+        "DYDX-USD", "LRC-USD", "AUDIO-USD", "COMP-USD", "YFI-USD", "BICO-USD", "JASMY-USD", "IOST-USD", "ANKR-USD", "ENS-USD",
+        "BAL-USD", "API3-USD", "COTI-USD", "BAND-USD", "OCEAN-USD", "GLMR-USD", "KDA-USD", "SPELL-USD", "ELF-USD", "CTSI-USD",
+        "BNT-USD", "AGIX-USD", "FET-USD", "ILV-USD", "DASH-USD", "LPT-USD", "MASK-USD", "DGB-USD", "ACA-USD", "SXP-USD",
+        "REN-USD", "HNT-USD", "RSR-USD", "XNO-USD", "PERP-USD", "ALPHA-USD", "STORJ-USD", "POND-USD", "ARDR-USD", "RAD-USD",
+        "MLN-USD", "CVC-USD", "TLM-USD", "TRU-USD", "STRAX-USD", "GTC-USD", "IDEX-USD", "BOND-USD", "VTHO-USD", "BTS-USD",
+        "POLY-USD", "DENT-USD", "UBT-USD", "FORTH-USD", "MC-USD", "SUPER-USD", "POLS-USD", "PNT-USD", "MTL-USD", "GLCH-USD"
+    ]
 
-if page == "Tahminleme":
-    selected_symbol = st.selectbox("Hisse Seçiniz:", symbols, key="selected_symbol_tahminleme")
-    model_type = st.selectbox("Tahmin Modeli Seçiniz:", ["ARIMA", "ETS", "Holt-Winters", "XGBoost", "LSTM"], key="model_type")
-    forecast_days = st.slider("Tahmin Edilecek Gün Sayısı:", min_value=10, max_value=60, value=30)
+    symbols = bist_symbols if market_type == "BIST 100" else crypto_symbols
+    selected_symbol = st.selectbox("📌 Sembol Seçiniz", symbols)
 
-    if model_type == "ARIMA":
-        p = st.number_input("AR (p) Değeri:", min_value=0, value=1)
-        d = st.number_input("Fark Düzeyi (d):", min_value=0, value=1)
-        q = st.number_input("MA (q) Değeri:", min_value=0, value=1)
+# ANA GÖRÜNÜM (tabs)
+tabs = st.tabs(["📊 Tahminleme", "🧠 Stratejiler"])
 
-    timeframes = [7, 14, 30]
-    use_volume = st.checkbox("📊 İşlem Hacmini Kullan")
-    use_volatility = st.checkbox("🌊 Volatiliteyi Kullan")
-    use_technical = st.checkbox("📈 Teknik Göstergeleri Kullan (RSI, MACD)")
-    
+
+with tabs[0]:
+    with st.sidebar:
+        st.header("🔮 Tahminleme Ayarları")
+        model_type = st.selectbox("Tahmin Modeli Seçiniz:", ["ARIMA", "ETS", "Holt-Winters", "XGBoost", "LSTM", "RandomForest-XGBoost Hybrid"], key="model_type")
+        forecast_days = st.slider("Tahmin Edilecek Gün Sayısı:", min_value=5, max_value=60, value=15)
+
+        if model_type == "ARIMA":
+            p = st.number_input("AR (p) Değeri:", min_value=0, value=1)
+            d = st.number_input("Fark Düzeyi (d):", min_value=0, value=1)
+            q = st.number_input("MA (q) Değeri:", min_value=0, value=1)
+
+        timeframes = [7, 14, 30]
+
+        col1, col2, col3 = st.columns(3)
+
+        with col3:
+            use_rsi = st.checkbox("📈 RSI")
+            use_volume = st.checkbox("📊 İşlem Hacmini Kullan")
+
+        with col2:
+            use_macd = st.checkbox("💹 MACD")
+            use_volatility = st.checkbox("🌊 Volatiliteyi Kullan")
+
+        with col1:
+            use_momentum = st.checkbox("⚡ Momentum")
+            use_stochastic = st.checkbox("🎯 Stochastic Oscillator (%K)")
+            use_williams = st.checkbox("📉 Williams %R")
+
+   
     if st.button("📊 Tahminle"):
         try:
             stock_data = yf.download(selected_symbol, start="2020-01-01", progress=False)
@@ -72,12 +118,43 @@ if page == "Tahminleme":
                 features = pd.DataFrame(index=ts_data.index)
                 for t in timeframes:
                     features[f'MA_{t}'] = ts_data.rolling(window=t).mean()
+
                 if use_volume:
                     features['Volume'] = stock_data['Volume']
+
                 if use_volatility:
                     features['Volatility'] = stock_data['Close'].pct_change().rolling(10).std()
-                if use_technical:
-                    features['RSI'] = 100 - (100 / (1 + ts_data.pct_change().rolling(14).mean()))
+
+                if use_rsi:
+                    delta = ts_data.diff()
+                    gain = pd.Series(np.where(delta > 0, delta, 0).squeeze(), index=ts_data.index)
+                    loss = pd.Series(np.where(delta < 0, -delta, 0).squeeze(), index=ts_data.index)
+                    avg_gain = pd.Series(gain, index=ts_data.index).rolling(window=14).mean()
+                    avg_loss = pd.Series(loss, index=ts_data.index).rolling(window=14).mean()
+                    rs = avg_gain / avg_loss
+                    features['RSI'] = 100 - (100 / (1 + rs))
+
+                if use_macd:
+                    ema_12 = ts_data.ewm(span=12, adjust=False).mean()
+                    ema_26 = ts_data.ewm(span=26, adjust=False).mean()
+                    macd = ema_12 - ema_26
+                    signal = macd.ewm(span=9, adjust=False).mean()
+                    features['MACD'] = macd
+                    features['Signal'] = signal
+
+                if use_momentum:
+                    features['Momentum'] = ts_data - ts_data.shift(4)
+
+                if use_stochastic:
+                    lowest_low = ts_data.rolling(14).min()
+                    highest_high = ts_data.rolling(14).max()
+                    features['Stochastic_K'] = ((ts_data - lowest_low) / (highest_high - lowest_low)) * 100
+
+                if use_williams:
+                    highest_high = ts_data.rolling(14).max()
+                    lowest_low = ts_data.rolling(14).min()
+                    features['Williams_%R'] = -100 * ((highest_high - ts_data) / (highest_high - lowest_low))
+
                 features.dropna(inplace=True)
 
                 if model_type == "ARIMA":
@@ -90,25 +167,24 @@ if page == "Tahminleme":
                     model = ExponentialSmoothing(ts_data, trend='add', seasonal='add', seasonal_periods=5).fit()
                     forecast = model.forecast(steps=forecast_days)
                 elif model_type == "XGBoost":
-                    X = pd.DataFrame(index=ts_data.index)
+                    X = pd.DataFrame(index=features.index)
                     X["Lag_1"] = ts_data.shift(1)
                     X["Lag_2"] = ts_data.shift(2)
                     X["Lag_3"] = ts_data.shift(3)
-                    X.dropna(inplace=True)
+                    X = pd.concat([X, features], axis=1).dropna()
+                    y = ts_data.loc[X.index]
 
-                    y = ts_data.loc[X.index]  # Hedef değişken
-
-                    model = XGBRegressor(n_estimators=100, learning_rate=0.1, objective='reg:squarederror')
+                    model = XGBRegressor(n_estimators=200, learning_rate=0.05, max_depth=5, subsample=0.8, objective='reg:squarederror')
                     model.fit(X, y)
 
-                    # Gelecek günler için tahmin verisini oluştur
-                    last_values = X.iloc[-1].values.reshape(1, -1)
+                    last_row = X.iloc[-1:].copy()
                     forecast = []
                     for _ in range(forecast_days):
-                        next_pred = model.predict(last_values)[0]
-                        forecast.append(next_pred)
-                        last_values = np.roll(last_values, -1)  # Yeni değeri ekleyerek kaydır
-                        last_values[0, -1] = next_pred
+                        pred = model.predict(last_row)[0]
+                        forecast.append(pred)
+                        new_row = last_row.shift(-1, axis=1)
+                        new_row.iloc[0, -1] = pred
+                        last_row = new_row
 
                 elif model_type == "LSTM":
                     from sklearn.preprocessing import MinMaxScaler
@@ -117,7 +193,7 @@ if page == "Tahminleme":
                     ts_scaled = scaler.fit_transform(ts_data.values.reshape(-1, 1))
 
                     X_train, y_train = [], []
-                    lookback = 10  # LSTM için geçmiş veri uzunluğu
+                    lookback = 10
                     for i in range(lookback, len(ts_scaled)):
                         X_train.append(ts_scaled[i - lookback:i, 0])
                         y_train.append(ts_scaled[i, 0])
@@ -134,18 +210,42 @@ if page == "Tahminleme":
                     model.compile(optimizer='adam', loss='mean_squared_error')
                     model.fit(X_train, y_train, epochs=20, batch_size=16, verbose=0)
 
-                    # Gelecek günler için tahmin verisini oluştur
                     last_values = ts_scaled[-lookback:].reshape(1, lookback, 1)
                     forecast = []
                     for _ in range(forecast_days):
                         next_pred = model.predict(last_values)[0][0]
                         forecast.append(next_pred)
-                        last_values = np.roll(last_values, -1, axis=1)  # Yeni değeri kaydır
+                        last_values = np.roll(last_values, -1, axis=1)
                         last_values[0, -1, 0] = next_pred
 
                     forecast = scaler.inverse_transform(np.array(forecast).reshape(-1, 1)).flatten()
 
-                forecast_dates = pd.date_range(start=ts_data.index[-1], periods=forecast_days, freq='B')
+                elif model_type == "RandomForest-XGBoost Hybrid":
+                    X = pd.DataFrame(index=features.index)
+                    X["Lag_1"] = ts_data.shift(1)
+                    X["Lag_2"] = ts_data.shift(2)
+                    X["Lag_3"] = ts_data.shift(3)
+                    X = pd.concat([X, features], axis=1).dropna()
+                    y = ts_data.loc[X.index]
+
+                    rf = RandomForestRegressor(n_estimators=100, random_state=42)
+                    xgb = XGBRegressor(n_estimators=100, learning_rate=0.05, objective='reg:squarederror')
+
+                    rf.fit(X, y)
+                    xgb.fit(X, y)
+
+                    last_row = X.iloc[-1:].copy()
+                    forecast = []
+                    for _ in range(forecast_days):
+                        rf_pred = rf.predict(last_row)[0]
+                        xgb_pred = xgb.predict(last_row)[0]
+                        hybrid_pred = (rf_pred + xgb_pred) / 2
+                        forecast.append(hybrid_pred)
+                        new_row = last_row.shift(-1, axis=1)
+                        new_row.iloc[0, -1] = hybrid_pred
+                        last_row = new_row
+
+                forecast_dates = pd.date_range(start=ts_data.index[-1] + pd.Timedelta(days=1), periods=forecast_days, freq='B')
                 forecast_df = pd.DataFrame({'Date': forecast_dates, 'Forecast': forecast})
 
                 fig, ax = plt.subplots(figsize=(10, 5))
@@ -162,18 +262,20 @@ if page == "Tahminleme":
             st.error(f"⚠️ Bir hata oluştu: {e}")
 
 
-elif page == "Stratejiler":
-    symbol = st.selectbox("Hisse Seçimi:", symbols)
-    strategies = st.multiselect("Strateji Seçimi:", [
-        "Turtle Trade", "Moving Average Crossover", "Donchian Channel Breakout", 
-        "Bollinger Bands Breakout", "Parabolic SAR", "Keltner Channel Breakout", 
-        "Ichimoku Cloud", "SuperTrend Indicator", "RSI Trend Strategy", "MACD Trend Tracking"
-    ])
+with tabs[1]:
+    with st.sidebar:
+        st.header("🧠 Strateji Ayarları")
+        symbol = selected_symbol
+        strategies = st.multiselect("Strateji Seçimi:", [
+            "Turtle Trade", "Moving Average Crossover", "Donchian Channel Breakout", 
+            "Bollinger Bands Breakout", "Parabolic SAR", "Keltner Channel Breakout", 
+            "Ichimoku Cloud", "SuperTrend Indicator", "RSI Trend Strategy", "MACD Trend Tracking"
+        ])
 
     if st.button("Stratejiyi Göster"):
         try:
             interval = "1d"
-            stock_data = yf.download(symbol, period="360d", interval=interval)
+            stock_data = yf.download(symbol, period="720d", interval=interval)
             
             if isinstance(stock_data.columns, pd.MultiIndex):
                 stock_data.columns = stock_data.columns.droplevel(0)
