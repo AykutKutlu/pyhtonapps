@@ -5,6 +5,7 @@ import pyreadstat
 import plotly.express as px
 import tempfile
 
+
 def weighted_mean(x, w):
     return round(np.average(x, weights=w), 5)
 
@@ -78,12 +79,9 @@ if uploaded_file:
             na_th = st.slider("NA Eşiği", 0.0, 1.0, 0.5, step=0.05)
 
             selected_vars = []
-            plot_type = None
-
             if group_col:
                 dummy_result = weighted_group_analysis(df, group_col, weight_col, na_th)
                 selected_vars = st.multiselect("Analiz Değişkenleri", list(dummy_result.keys()))
-                plot_type = st.radio("Grafik Tipi", ["bar", "line", "box", "point", "pie", "density"])
 
             submit = st.form_submit_button("Analizi Başlat")
 
@@ -97,40 +95,16 @@ if uploaded_file:
                     top_words = data.groupby("words")["weighted_count"].sum().nlargest(10).index
                     filtered = data[data["words"].isin(top_words)]
 
-                    if plot_type == "bar":
-                        fig = px.bar(filtered, x="words", y="frequency", color=group_col[0],
-                                     facet_col=group_col[1] if len(group_col) > 1 else None)
-                    elif plot_type == "pie":
-                        if len(group_col) > 1:
-                            for val in filtered[group_col[1]].unique():
-                                subset = filtered[filtered[group_col[1]] == val]
-                                fig = px.pie(subset, values="frequency", names="words",
-                                             title=f"{group_col[1]}: {val}")
-                                st.plotly_chart(fig, use_container_width=True)
-                            continue
-                        else:
-                            fig = px.pie(filtered, values="frequency", names="words", title=f"{var} - Pie")
-                    elif plot_type == "density":
-                        fig = px.violin(filtered, y="frequency", color=group_col[0], box=True, points="all")
-
+                    fig = px.bar(filtered, x="words", y="frequency", color=group_col[0],
+                                 facet_col=group_col[1] if len(group_col) > 1 else None,
+                                 barmode="group")
                     st.plotly_chart(fig, use_container_width=True)
-                    st.dataframe(filtered)
+                    st.dataframe(filtered, hide_index=True)
 
                 else:
                     long_df = pd.melt(data, id_vars=group_col, value_vars=['weighted_mean', 'weighted_median'])
 
-                    if plot_type == "bar":
-                        fig = px.bar(long_df, x=group_col[0], y="value", color="variable", barmode="group",
-                                     facet_col=group_col[1] if len(group_col) > 1 else None)
-                    elif plot_type == "line":
-                        fig = px.line(data, x=group_col[0], y="weighted_mean",
-                                      color=group_col[1] if len(group_col) > 1 else None, markers=True)
-                    elif plot_type == "box":
-                        fig = px.box(data, x=group_col[0], y="weighted_mean",
-                                     color=group_col[1] if len(group_col) > 1 else None)
-                    elif plot_type == "point":
-                        fig = px.scatter(data, x=group_col[0], y="weighted_mean",
-                                         color=group_col[1] if len(group_col) > 1 else None)
-
+                    fig = px.bar(long_df, x=group_col[0], y="value", color="variable", barmode="group",
+                                 facet_col=group_col[1] if len(group_col) > 1 else None)
                     st.plotly_chart(fig, use_container_width=True)
-                    st.dataframe(data)
+                    st.dataframe(data, hide_index=True)
