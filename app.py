@@ -11,29 +11,146 @@ from xgboost import XGBRegressor
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 
-st.set_page_config(page_title="Tahminleme ve Stratejiler", layout="wide")
+st.set_page_config(
+    page_title="Tahminleme ve Stratejiler",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# CSS ile sidebar'ı sabit genişlikte ve her zaman açık tutmak için stil ekleyelim
+# Arayüzü daha akıcı ve modern yapmak için CSS
 st.markdown(
     """
     <style>
-        /* Sidebar genişliğini sabitleyelim */
-        [data-testid="stSidebar"] {
-            min-width: 500px;
-            max-width: 500px;
-            width: 500px;
-            position: fixed;
-            z-index: 100;
-        }
+    /* Ana arkaplan ve metin renkleri */
+    .stApp {
+        background-color: #121212;
+        color: #e0e0e0;
+    }
 
-        /* Sağdaki ana içeriği yerleştirmek için margin-left ekleyelim */
+    /* Başlıklar */
+    h1, h2, h3, h4, h5, h6 {
+        color: #bb86fc;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* Sidebar stilini daha anlaşılır ve modern hale getirme */
+    [data-testid="stSidebar"] {
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+        min-width: 350px !important;
+        max-width: 400px !important;
+        width: 380px !important;
+        padding: 2rem 1.5rem;
+        border-right: 1px solid #333333;
+        box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+    }
+
+    /* Sidebar'daki tüm metinlerin rengini beyaz yapma */
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+
+    /* Ana içerik alanının sidebar'a göre ayarlanması */
+    @media (min-width: 600px) {
         .main {
-            margin-left: 500px;
+            margin-left: 400px;
         }
+    }
+
+    /* Butonlar */
+    .stButton > button {
+        background-color: #6200ee;
+        color: white;
+        font-weight: bold;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        transition: background-color 0.3s ease, transform 0.2s ease;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stButton > button:hover {
+        background-color: #3700b3;
+        transform: translateY(-2px);
+    }
+
+    /* Selectbox ve diğer input alanları */
+    .stSelectbox > div > div, .stNumberInput > div > div, .stSlider > div > div {
+        background-color: #2c2c2c;
+        border-radius: 8px;
+        border: 1px solid #3e3e3e;
+        color: #e0e0e0;
+    }
+    .stSelectbox div[role="listbox"] {
+        background-color: #2c2c2c;
+        border: 1px solid #3e3e3e;
+        color: #e0e0e0;
+    }
+    .stSelectbox div[role="option"] {
+        color: #e0e0e0;
+    }
+    .stSelectbox div[role="option"]:hover {
+        background-color: #3e3e3e;
+    }
+
+    /* Checkbox'lar */
+    .stCheckbox > label {
+        color: #e0e0e0;
+        font-size: 16px;
+    }
+    .stCheckbox > label > div[data-testid="stDecoration"] {
+        background-color: #3e3e3e;
+        border-color: #bb86fc;
+    }
+
+    /* Sekmeler (Tabs) */
+    .stTabs [data-testid="stTab"] {
+        background-color: #2c2c2c;
+        color: #b0b0b0;
+        font-size: 18px;
+        font-weight: 500;
+        border-radius: 8px 8px 0 0;
+        transition: all 0.3s ease;
+    }
+    .stTabs [data-testid="stTab"][aria-selected="true"] {
+        background-color: #1e1e1e;
+        color: #ffffff;
+        border-bottom: 3px solid #6200ee;
+    }
+    
+    /* İndirme butonu */
+    .stDownloadButton > button {
+        background-color: #03dac6;
+        color: #000000;
+    }
+    .stDownloadButton > button:hover {
+        background-color: #018786;
+    }
+    
+    /* Geri bildirim kutuları */
+    .stSuccess, .stError, .stWarning {
+        border-radius: 8px;
+    }
+    
+    /* Mobil uyumluluk */
+    @media (max-width: 600px) {
+        [data-testid="stSidebar"] {
+            min-width: 100% !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            position: relative !important;
+        }
+        .main {
+            margin-left: 0 !important;
+        }
+        .stButton > button {
+            width: 100%;
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True
 )
+
 
 st.title("📈 Hisse & Kripto Tahminleme ve Stratejiler")
 
