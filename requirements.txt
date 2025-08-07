@@ -1,4 +1,3 @@
-GaussianHMM
 hmmlearn
 matplotlib
 numpy
