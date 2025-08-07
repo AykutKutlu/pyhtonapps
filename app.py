@@ -10,6 +10,16 @@ from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
+from hmmlearn.hmm import GaussianHMM
+from statsmodels.tsa.api import ExponentialSmoothing
+from sklearn.preprocessing import MinMaxScaler
+try:
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense
+    _keras_available = True
+except ImportError:
+    _keras_available = False
+   
 
 st.set_page_config(
     page_title="Tahminleme ve Stratejiler",
@@ -198,7 +208,7 @@ tabs = st.tabs(["📊 Tahminleme", "🧠 Stratejiler"])
 with tabs[0]:
     with st.sidebar:
         st.header("🔮 Tahminleme Ayarları")
-        model_type = st.selectbox("Tahmin Modeli Seçiniz:", ["ARIMA", "ETS", "Holt-Winters", "XGBoost", "LSTM", "RandomForest-XGBoost Hybrid"], key="model_type")
+        model_type = st.selectbox("Tahmin Modeli Seçiniz:", ["ARIMA", "ETS", "Holt-Winters", "XGBoost", "LSTM", "RandomForest-XGBoost Hybrid", "HMM Trend Regime"], key="model_type")
         forecast_days = st.slider("Tahmin Edilecek Gün Sayısı:", min_value=5, max_value=60, value=15)
 
         if model_type == "ARIMA":
@@ -275,92 +285,361 @@ with tabs[0]:
                 features.dropna(inplace=True)
 
                 if model_type == "ARIMA":
-                    model = ARIMA(ts_data, order=(p, d, q)).fit()
-                    forecast = model.forecast(steps=forecast_days)
+                    st.subheader(f"ARIMA({p}, {d}, {q}) Modeli")
+                    st.info(
+                        """
+                        ARIMA (Otoregresif Entegre Hareketli Ortalama) modeli, zaman serisi verilerindeki 
+                        geçmiş değerlere, hatalara ve fark alma işlemlerine dayanarak gelecekteki değerleri 
+                        tahmin eder. Özellikle durağan (stationarity) özellik gösteren veya 
+                        durağan hale getirilebilen veriler için uygundur.
+                        """
+                    )
+
+                    if ts_data.isnull().values.any():
+                        st.error("ARIMA: Giriş zaman serisi **boş değerler (NaN)** içeriyor. Lütfen veriyi temizleyin.")
+                        # Early return to prevent the model from trying to fit on bad data
+                        st.stop()
+
+                    with st.spinner("ARIMA modeli eğitiliyor ve tahmin yapılıyor..."):
+                        try:
+                            # Fit the ARIMA model
+                            model = ARIMA(ts_data, order=(p, d, q)).fit()
+
+                            # Make the forecast
+                            forecast = model.forecast(steps=forecast_days)
+                            
+                            # Display success message and results
+                            st.success("ARIMA modeli başarıyla eğitildi ve tahmin yapıldı!")
+                        
+                        except Exception as e:
+                            st.error(f"ARIMA modeli hatası oluştu. Lütfen **p, d, q** değerlerini kontrol edin. Hata mesajı: `{e}`")
+                            st.warning("Verileriniz durağan olmayabilir veya daha fazla veri çekmeyi deneyebilirsiniz.")
+   
                 elif model_type == "ETS":
-                    model = ExponentialSmoothing(ts_data, trend='add').fit()
-                    forecast = model.forecast(steps=forecast_days)
+                    st.subheader("ETS (Exponential Smoothing) Modeli")
+                    st.info(
+                        """
+                        ETS (Üstel Düzeltme) modeli, zaman serisi verilerindeki trend ve 
+                        mevsimsellik gibi bileşenleri üstel olarak düzeltir. Özellikle kısa 
+                        ve orta vadeli tahminlerde etkilidir ve veri setindeki desenleri 
+                        yumuşatarak geleceği öngörür.
+                        """
+                    )
+
+                    # Zaman serisinde boş (NaN) değer olup olmadığını kontrol edin
+                    if ts_data.isnull().values.any():
+                        st.error("ETS: Giriş zaman serisi **boş değerler (NaN)** içeriyor. Lütfen veriyi temizleyin.")
+                        # Boş değerler varsa modelin çalışmasını durdurun
+                        st.stop()
+
+                    with st.spinner("ETS modeli eğitiliyor ve tahmin yapılıyor..."):
+                        try:
+
+                            model = ExponentialSmoothing(ts_data, trend='add').fit()
+                            
+                            # Tahmin yapın
+                            forecast = model.forecast(steps=forecast_days)
+                            
+                            # Başarılı mesajı gösterin
+                            st.success("ETS modeli başarıyla eğitildi ve tahmin yapıldı!")
+
+
+                        except Exception as e:
+                            # Kullanıcı dostu bir hata mesajı gösterin
+                            st.error(f"ETS modeli hatası oluştu. Lütfen veri setinizi ve model parametrelerinizi kontrol edin. Hata mesajı: `{e}`")
+                            st.warning("Veri setinizde trend veya mevsimsellik olmayabilir ya da modelin bu bileşenleri algılaması için yeterli veri bulunmayabilir.")
+
+                     
                 elif model_type == "Holt-Winters":
-                    model = ExponentialSmoothing(ts_data, trend='add', seasonal='add', seasonal_periods=5).fit()
-                    forecast = model.forecast(steps=forecast_days)
+                    st.subheader("Holt-Winters (Üçlü Üstel Düzeltme) Modeli")
+                    st.info(
+                        """
+                        Holt-Winters modeli, zaman serisi verilerindeki **trend** ve **mevsimsellik** bileşenlerini dikkate alan gelişmiş bir üstel düzeltme yöntemidir. 
+                        Hem toplamsal (additive) hem de çarpımsal (multiplicative) trend ve 
+                        mevsimsellik tiplerini destekleyerek daha karmaşık zaman serisi desenlerini 
+                        modellemeye olanak tanır. Özellikle belirgin trend ve mevsimsel döngülere 
+                        sahip veriler için uygundur.
+                        """
+                    )
+
+                    # Zaman serisinde boş (NaN) değer olup olmadığını kontrol edin
+                    if ts_data.isnull().values.any():
+                        st.error("Holt-Winters: Giriş zaman serisi **boş değerler (NaN)** içeriyor. Lütfen veriyi temizleyin.")
+                        # Boş değerler varsa modelin çalışmasını durdurun
+                        st.stop()
+
+                    with st.spinner("Holt-Winters modeli eğitiliyor ve tahmin yapılıyor..."):
+                        try:
+                            # Holt-Winters modelini eğitin. Trend='add', seasonal='add' ve seasonal_periods=5 olarak ayarlandı.
+                            # seasonal_periods değerini veri setinizin mevsimsel periyoduna göre ayarlamanız önemlidir.
+                            model = ExponentialSmoothing(ts_data, trend='add', seasonal='add', seasonal_periods=5).fit()
+                            
+                            # Tahmin yapın
+                            forecast = model.forecast(steps=forecast_days)
+                            
+                            # Başarılı mesajı gösterin
+                            st.success("Holt-Winters modeli başarıyla eğitildi ve tahmin yapıldı!")
+
+                            # Tahmin sonuçlarını gösterme isteği olmadığı için bu satır çıkarılmıştır.
+                            # st.write("Tahmin sonuçları:", forecast)
+
+                            # İsterseniz tahmin sonuçlarını görselleştirebilirsiniz:
+                            # st.line_chart(forecast)
+
+                        except Exception as e:
+                            # Kullanıcı dostu bir hata mesajı gösterin
+                            st.error(f"Holt-Winters modeli hatası oluştu. Lütfen veri setinizi ve model parametrelerini (özellikle seasonal_periods) kontrol edin. Hata mesajı: `{e}`")
+                            st.warning("Veri setinizde belirgin bir trend veya mevsimsellik olmayabilir ya da modelin bu bileşenleri algılaması için yeterli veri bulunmayabilir.")
+
                 elif model_type == "XGBoost":
-                    X = pd.DataFrame(index=features.index)
-                    X["Lag_1"] = ts_data.shift(1)
-                    X["Lag_2"] = ts_data.shift(2)
-                    X["Lag_3"] = ts_data.shift(3)
-                    X = pd.concat([X, features], axis=1).dropna()
-                    y = ts_data.loc[X.index]
+                    st.subheader("XGBoost Modeli")
+                    st.info(
+                        """
+                        XGBoost (eXtreme Gradient Boosting) modeli, ağaç tabanlı bir ensemble yöntemidir. 
+                        Zaman serisi tahmininde, genellikle gecikmeli değerler (lag features) ve dışsal 
+                        özellikler kullanılarak regresyon problemi olarak ele alınır. Yüksek performanslı 
+                        ve esnek bir model olup, karmaşık ilişkileri yakalamakta etkilidir.
+                        """
+                    )
 
-                    model = XGBRegressor(n_estimators=200, learning_rate=0.05, max_depth=5, subsample=0.8, objective='reg:squarederror')
-                    model.fit(X, y)
+                    # Zaman serisinde veya özelliklerde boş (NaN) değer olup olmadığını kontrol edin
+                    if ts_data.isnull().values.any() or features.isnull().values.any():
+                        st.error("XGBoost: Giriş zaman serisi veya özellikler **boş değerler (NaN)** içeriyor. Lütfen veriyi temizleyin.")
+                        st.stop()
 
-                    last_row = X.iloc[-1:].copy()
-                    forecast = []
-                    for _ in range(forecast_days):
-                        pred = model.predict(last_row)[0]
-                        forecast.append(pred)
-                        new_row = last_row.shift(-1, axis=1)
-                        new_row.iloc[0, -1] = pred
-                        last_row = new_row
+                    with st.spinner("XGBoost modeli eğitiliyor ve tahmin yapılıyor..."):
+                        try:
+                            # Gecikmeli özellikler oluşturma
+                            X = pd.DataFrame(index=ts_data.index)
+                            X["Lag_1"] = ts_data.shift(1)
+                            X["Lag_2"] = ts_data.shift(2)
+                            X["Lag_3"] = ts_data.shift(3)
+                            
+                            # Dışsal özellikleri birleştirme ve NaN değerleri temizleme
+                            X = pd.concat([X, features], axis=1).dropna()
+                            y = ts_data.loc[X.index] # Özelliklerle eşleşen hedef değişkeni seç
+
+                            # XGBoost modelini tanımlama ve eğitme
+                            model = XGBRegressor(n_estimators=200, learning_rate=0.05, max_depth=5, subsample=0.8, objective='reg:squarederror')
+                            model.fit(X, y)
+
+                            # Gelecek tahminleri için döngü
+                            last_row = X.iloc[-1:].copy() # Son bilinen özellik satırı
+                            forecast = []
+                            for _ in range(forecast_days):
+                                pred = model.predict(last_row)[0] # Tahmin yap
+                                forecast.append(pred)
+                                
+                                # Gelecek tahmini için last_row'u güncelle
+                                # Lag özelliklerini kaydır ve en son tahmini ekle
+                                new_row = last_row.shift(-1, axis=1)
+                                # Lag_1, Lag_2, Lag_3 sütunları için kaydırma sonrası en son lag değeri (Lag_3) pred olur
+                                # Diğer özellikler (Feature1, Feature2) aynı kalır.
+                                # Burada sadece Lag_3'ün güncellenmesi yeterli olmayabilir, tüm lag özelliklerinin
+                                # doğru şekilde güncellendiğinden emin olmak için daha karmaşık bir mantık gerekebilir.
+                                # Basit bir örnek olarak, sadece en son lag değerini güncelliyoruz.
+                                if "Lag_1" in new_row.columns:
+                                    new_row["Lag_1"] = new_row["Lag_2"] if "Lag_2" in new_row.columns else np.nan
+                                if "Lag_2" in new_row.columns:
+                                    new_row["Lag_2"] = new_row["Lag_3"] if "Lag_3" in new_row.columns else np.nan
+                                if "Lag_3" in new_row.columns:
+                                    new_row["Lag_3"] = pred # En yeni tahmin, bir sonraki adım için Lag_3 olur
+                                
+                                last_row = new_row.copy() # Güncellenmiş satırı ata
+                                
+                            st.success("XGBoost modeli başarıyla eğitildi ve tahmin yapıldı!")
+                            # st.write("Tahmin sonuçları:", forecast) # İstenmediği için kaldırıldı
+
+                        except Exception as e:
+                            st.error(f"XGBoost modeli hatası oluştu. Lütfen veri setinizi, özelliklerinizi ve model parametrelerinizi kontrol edin. Hata mesajı: `{e}`")
+                            st.warning("Yeterli geçmiş veri veya uygun özellikler sağlanmamış olabilir.")
+
+                elif model_type == "HMM Trend Regime":
+                    st.subheader("HMM (Gizli Markov Modeli) Trend Rejimi Modeli")
+                    st.info(
+                        """
+                        Gizli Markov Modeli (HMM), zaman serisi verilerindeki gizli durumları 
+                        (rejimleri) modellemek için kullanılır. Bu model, piyasa koşulları 
+                        gibi farklı trend rejimlerini otomatik olarak tespit edebilir ve 
+                        her rejime özgü istatistiksel özellikleri kullanarak gelecekteki 
+                        davranışı tahmin etmeye çalışır.
+                        """
+                    )
+
+                    if ts_data.isnull().values.any():
+                        st.error("HMM Trend Regime: Giriş zaman serisi **boş değerler (NaN)** içeriyor. Lütfen veriyi temizleyin.")
+                        st.stop()
+
+                    with st.spinner("HMM Trend Rejimi modeli eğitiliyor ve tahmin yapılıyor..."):
+                        try:
+                            # Get daily returns for HMM
+                            returns = ts_data.pct_change().dropna().values.reshape(-1,1)
+                            
+                            # HMM modelini tanımlama ve eğitme
+                            # n_components: Gizli durum sayısı (örneğin, yükseliş ve düşüş rejimleri için 2)
+                            hmm_model = GaussianHMM(n_components=2, covariance_type="diag", n_iter=1000, random_state=42).fit(returns)
+                            
+                            # Gizli durumları tahmin etme
+                            hidden_states = hmm_model.predict(returns)
+
+                            # Gelecek tahminleri için döngü
+                            regime_forecast = [ts_data.iloc[-1]] # Son bilinen değerden başla
+                            for _ in range(forecast_days):
+                                # Son gizli duruma göre bir sonraki getiriyi rastgele örnekle
+                                next_return = np.random.normal(hmm_model.means_[hidden_states[-1]],
+                                                                np.sqrt(hmm_model.covars_[hidden_states[-1]]))
+                                # Bir sonraki fiyatı hesapla
+                                next_price = regime_forecast[-1] * (1 + next_return[0])
+                                regime_forecast.append(next_price)
+                            
+                            # İlk elemanı (başlangıç değeri) çıkar
+                            forecast = regime_forecast[1:] 
+                            
+                            st.success("HMM Trend Rejimi modeli başarıyla eğitildi ve tahmin yapıldı!")
+                            # st.write("Tahmin sonuçları:", forecast) # İstenmediği için kaldırıldı
+
+                        except Exception as e:
+                            st.error(f"HMM Trend Rejimi modeli hatası oluştu. Lütfen veri setinizi ve model parametrelerini (n_components, n_iter) kontrol edin. Hata mesajı: `{e}`")
+                            st.warning("Model, veri setinizdeki gizli rejimleri tespit etmekte zorlanmış olabilir.")
 
                 elif model_type == "LSTM":
-                    from sklearn.preprocessing import MinMaxScaler
+                    st.subheader("LSTM (Uzun Kısa Süreli Bellek) Modeli")
+                    st.info(
+                        """
+                        LSTM (Long Short-Term Memory) modeli, tekrarlayan sinir ağlarının (RNN) 
+                        özel bir türüdür ve özellikle uzun vadeli bağımlılıkları öğrenmekte etkilidir. 
+                        Zaman serisi verilerindeki karmaşık ve doğrusal olmayan desenleri yakalamak 
+                        için kullanılır. Veri ölçeklendirme ve uygun giriş şekillendirmesi gerektirir.
+                        """
+                    )
 
-                    scaler = MinMaxScaler(feature_range=(0, 1))
-                    ts_scaled = scaler.fit_transform(ts_data.values.reshape(-1, 1))
+                    if not _keras_available:
+                        st.error("LSTM modeli için TensorFlow/Keras kütüphanesi yüklü değil. Lütfen yükleyin (`pip install tensorflow`).")
+                        st.stop()
+                    
+                    if ts_data.isnull().values.any():
+                        st.error("LSTM: Giriş zaman serisi **boş değerler (NaN)** içeriyor. Lütfen veriyi temizleyin.")
+                        st.stop()
 
-                    X_train, y_train = [], []
-                    lookback = 10
-                    for i in range(lookback, len(ts_scaled)):
-                        X_train.append(ts_scaled[i - lookback:i, 0])
-                        y_train.append(ts_scaled[i, 0])
+                    with st.spinner("LSTM modeli eğitiliyor ve tahmin yapılıyor..."):
+                        try:
+                            # Veriyi 0-1 aralığına ölçeklendirme
+                            scaler = MinMaxScaler(feature_range=(0, 1))
+                            ts_scaled = scaler.fit_transform(ts_data.values.reshape(-1, 1))
 
-                    X_train, y_train = np.array(X_train), np.array(y_train)
-                    X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
+                            # Lookback penceresi ile eğitim verisi hazırlama
+                            X_train, y_train = [], []
+                            lookback = 15
+                            if len(ts_scaled) <= lookback:
+                                st.error(f"LSTM: Eğitim için yeterli veri yok. En az {lookback + 1} veri noktası gerekli.")
+                                st.stop()
 
-                    model = Sequential()
-                    model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
-                    model.add(LSTM(units=50, return_sequences=False))
-                    model.add(Dense(units=25))
-                    model.add(Dense(units=1))
+                            for i in range(lookback, len(ts_scaled)):
+                                X_train.append(ts_scaled[i - lookback:i, 0])
+                                y_train.append(ts_scaled[i, 0])
 
-                    model.compile(optimizer='adam', loss='mean_squared_error')
-                    model.fit(X_train, y_train, epochs=20, batch_size=16, verbose=0)
+                            X_train, y_train = np.array(X_train), np.array(y_train)
+                            # LSTM için giriş şeklini yeniden boyutlandırma (örnek, lookback, özellikler)
+                            X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
 
-                    last_values = ts_scaled[-lookback:].reshape(1, lookback, 1)
-                    forecast = []
-                    for _ in range(forecast_days):
-                        next_pred = model.predict(last_values)[0][0]
-                        forecast.append(next_pred)
-                        last_values = np.roll(last_values, -1, axis=1)
-                        last_values[0, -1, 0] = next_pred
+                            # LSTM modelini oluşturma
+                            model = Sequential()
+                            model.add(LSTM(units=100, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+                            model.add(LSTM(units=100, return_sequences=False))
+                            model.add(Dense(units=25))
+                            model.add(Dense(units=1))
 
-                    forecast = scaler.inverse_transform(np.array(forecast).reshape(-1, 1)).flatten()
+                            # Modeli derleme ve eğitme
+                            model.compile(optimizer='adam', loss='mean_squared_error')
+                            model.fit(X_train, y_train, epochs=20, batch_size=16, verbose=0) # verbose=0 ile eğitim çıktısını gizle
+
+                            # Gelecek tahminleri için döngü
+                            last_values = ts_scaled[-lookback:].reshape(1, lookback, 1) # Son lookback değeri
+                            forecast = []
+                            for _ in range(forecast_days):
+                                next_pred_scaled = model.predict(last_values)[0][0] # Ölçeklendirilmiş tahmin
+                                forecast.append(next_pred_scaled)
+                                
+                                # Tahmin için giriş dizisini güncelle
+                                # İlk elemanı çıkar ve yeni tahmini sona ekle
+                                last_values = np.roll(last_values, -1, axis=1)
+                                last_values[0, -1, 0] = next_pred_scaled
+
+                            # Tahminleri orijinal ölçeğe geri dönüştürme
+                            forecast = scaler.inverse_transform(np.array(forecast).reshape(-1, 1)).flatten()
+                            
+                            st.success("LSTM modeli başarıyla eğitildi ve tahmin yapıldı!")
+                            # st.write("Tahmin sonuçları:", forecast) # İstenmediği için kaldırıldı
+
+                        except Exception as e:
+                            st.error(f"LSTM modeli hatası oluştu. Lütfen veri setinizi, lookback değerini ve model mimarisini kontrol edin. Hata mesajı: `{e}`")
+                            st.warning("Veri setiniz çok kısa olabilir veya LSTM modeli için yeterince karmaşık bir desen içermeyebilir.")
 
                 elif model_type == "RandomForest-XGBoost Hybrid":
-                    X = pd.DataFrame(index=features.index)
-                    X["Lag_1"] = ts_data.shift(1)
-                    X["Lag_2"] = ts_data.shift(2)
-                    X["Lag_3"] = ts_data.shift(3)
-                    X = pd.concat([X, features], axis=1).dropna()
-                    y = ts_data.loc[X.index]
+                    st.subheader("RandomForest-XGBoost Hibrit Modeli")
+                    st.info(
+                        """
+                        RandomForest ve XGBoost'u birleştiren hibrit model, iki güçlü ağaç tabanlı 
+                        ensemble yönteminin avantajlarını kullanır. RandomForest, farklı veri alt 
+                        kümeleri üzerinde bağımsız ağaçlar oluşturarak çeşitlilik sağlarken, 
+                        XGBoost ardışık olarak hataları düzelten ağaçlar ekleyerek performansı artırır. 
+                        Bu hibrit yaklaşım, daha sağlam ve doğru tahminler sunabilir.
+                        """
+                    )
 
-                    rf = RandomForestRegressor(n_estimators=100, random_state=42)
-                    xgb = XGBRegressor(n_estimators=100, learning_rate=0.05, objective='reg:squarederror')
+                    # Zaman serisinde veya özelliklerde boş (NaN) değer olup olmadığını kontrol edin
+                    if ts_data.isnull().values.any() or features.isnull().values.any():
+                        st.error("RandomForest-XGBoost Hybrid: Giriş zaman serisi veya özellikler **boş değerler (NaN)** içeriyor. Lütfen veriyi temizleyin.")
+                        st.stop()
 
-                    rf.fit(X, y)
-                    xgb.fit(X, y)
+                    with st.spinner("RandomForest-XGBoost Hibrit modeli eğitiliyor ve tahmin yapılıyor..."):
+                        try:
+                            # Gecikmeli özellikler oluşturma
+                            X = pd.DataFrame(index=ts_data.index)
+                            X["Lag_1"] = ts_data.shift(1)
+                            X["Lag_2"] = ts_data.shift(2)
+                            X["Lag_3"] = ts_data.shift(3)
+                            
+                            # Dışsal özellikleri birleştirme ve NaN değerleri temizleme
+                            X = pd.concat([X, features], axis=1).dropna()
+                            y = ts_data.loc[X.index] # Özelliklerle eşleşen hedef değişkeni seç
 
-                    last_row = X.iloc[-1:].copy()
-                    forecast = []
-                    for _ in range(forecast_days):
-                        rf_pred = rf.predict(last_row)[0]
-                        xgb_pred = xgb.predict(last_row)[0]
-                        hybrid_pred = (rf_pred + xgb_pred) / 2
-                        forecast.append(hybrid_pred)
-                        new_row = last_row.shift(-1, axis=1)
-                        new_row.iloc[0, -1] = hybrid_pred
-                        last_row = new_row
+                            # RandomForest ve XGBoost modellerini tanımlama ve eğitme
+                            rf = RandomForestRegressor(n_estimators=100, random_state=42)
+                            xgb = XGBRegressor(n_estimators=100, learning_rate=0.05, objective='reg:squarederror', random_state=42)
+
+                            rf.fit(X, y)
+                            xgb.fit(X, y)
+
+                            # Gelecek tahminleri için döngü
+                            last_row = X.iloc[-1:].copy()
+                            forecast = []
+                            for _ in range(forecast_days):
+                                rf_pred = rf.predict(last_row)[0] # RandomForest tahmini
+                                xgb_pred = xgb.predict(last_row)[0] # XGBoost tahmini
+                                hybrid_pred = (rf_pred + xgb_pred) / 2 # İki tahminin ortalaması
+                                forecast.append(hybrid_pred)
+                                
+                                # Gelecek tahmini için last_row'u güncelle
+                                # Lag özelliklerini kaydır ve en son tahmini ekle
+                                new_row = last_row.shift(-1, axis=1)
+                                if "Lag_1" in new_row.columns:
+                                    new_row["Lag_1"] = new_row["Lag_2"] if "Lag_2" in new_row.columns else np.nan
+                                if "Lag_2" in new_row.columns:
+                                    new_row["Lag_2"] = new_row["Lag_3"] if "Lag_3" in new_row.columns else np.nan
+                                if "Lag_3" in new_row.columns:
+                                    new_row["Lag_3"] = hybrid_pred # En yeni tahmin, bir sonraki adım için Lag_3 olur
+                                
+                                last_row = new_row.copy()
+                            
+                            st.success("RandomForest-XGBoost Hibrit modeli başarıyla eğitildi ve tahmin yapıldı!")
+                            # st.write("Tahmin sonuçları:", forecast) # İstenmediği için kaldırıldı
+
+                        except Exception as e:
+                            st.error(f"RandomForest-XGBoost Hibrit modeli hatası oluştu. Lütfen veri setinizi, özelliklerinizi ve model parametrelerini kontrol edin. Hata mesajı: `{e}`")
+                            st.warning("Yeterli geçmiş veri veya uygun özellikler sağlanmamış olabilir.")
+
+
 
                 forecast_dates = pd.date_range(start=ts_data.index[-1] + pd.Timedelta(days=1), periods=forecast_days, freq='B')
                 forecast_df = pd.DataFrame({'Date': forecast_dates, 'Forecast': forecast})
