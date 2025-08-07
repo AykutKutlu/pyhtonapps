@@ -15,7 +15,7 @@ from statsmodels.tsa.api import ExponentialSmoothing
 from sklearn.preprocessing import MinMaxScaler
 try:
     from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import LSTM, Dense
+    from tensorflow.keras.layers import LSTM, Dense, Dropout
     _keras_available = True
 except ImportError:
     _keras_available = False
@@ -409,46 +409,43 @@ with tabs[0]:
 
                     with st.spinner("XGBoost modeli eğitiliyor ve tahmin yapılıyor..."):
                         try:
-                            # Gecikmeli özellikler oluşturma
                             X = pd.DataFrame(index=ts_data.index)
                             X["Lag_1"] = ts_data.shift(1)
                             X["Lag_2"] = ts_data.shift(2)
                             X["Lag_3"] = ts_data.shift(3)
                             
-                            # Dışsal özellikleri birleştirme ve NaN değerleri temizleme
                             X = pd.concat([X, features], axis=1).dropna()
-                            y = ts_data.loc[X.index] # Özelliklerle eşleşen hedef değişkeni seç
+                            y = ts_data.loc[X.index] 
 
-                            # XGBoost modelini tanımlama ve eğitme
-                            model = XGBRegressor(n_estimators=200, learning_rate=0.05, max_depth=5, subsample=0.8, objective='reg:squarederror')
+                            model = XGBRegressor(
+                                objective='reg:squarederror',
+                                n_estimators=50,
+                                learning_rate=0.1,
+                                max_depth=4,
+                                subsample=0.8,
+                                colsample_bytree=0.8,
+                                random_state=42
+                            )
                             model.fit(X, y)
 
-                            # Gelecek tahminleri için döngü
-                            last_row = X.iloc[-1:].copy() # Son bilinen özellik satırı
+                            last_row = X.iloc[-1:].copy()
                             forecast = []
                             for _ in range(forecast_days):
-                                pred = model.predict(last_row)[0] # Tahmin yap
+                                pred = model.predict(last_row)[0]
                                 forecast.append(pred)
                                 
-                                # Gelecek tahmini için last_row'u güncelle
-                                # Lag özelliklerini kaydır ve en son tahmini ekle
                                 new_row = last_row.shift(-1, axis=1)
-                                # Lag_1, Lag_2, Lag_3 sütunları için kaydırma sonrası en son lag değeri (Lag_3) pred olur
-                                # Diğer özellikler (Feature1, Feature2) aynı kalır.
-                                # Burada sadece Lag_3'ün güncellenmesi yeterli olmayabilir, tüm lag özelliklerinin
-                                # doğru şekilde güncellendiğinden emin olmak için daha karmaşık bir mantık gerekebilir.
-                                # Basit bir örnek olarak, sadece en son lag değerini güncelliyoruz.
+
                                 if "Lag_1" in new_row.columns:
                                     new_row["Lag_1"] = new_row["Lag_2"] if "Lag_2" in new_row.columns else np.nan
                                 if "Lag_2" in new_row.columns:
                                     new_row["Lag_2"] = new_row["Lag_3"] if "Lag_3" in new_row.columns else np.nan
                                 if "Lag_3" in new_row.columns:
-                                    new_row["Lag_3"] = pred # En yeni tahmin, bir sonraki adım için Lag_3 olur
+                                    new_row["Lag_3"] = pred
                                 
-                                last_row = new_row.copy() # Güncellenmiş satırı ata
+                                last_row = new_row.copy()
                                 
                             st.success("XGBoost modeli başarıyla eğitildi ve tahmin yapıldı!")
-                            # st.write("Tahmin sonuçları:", forecast) # İstenmediği için kaldırıldı
 
                         except Exception as e:
                             st.error(f"XGBoost modeli hatası oluştu. Lütfen veri setinizi, özelliklerinizi ve model parametrelerinizi kontrol edin. Hata mesajı: `{e}`")
@@ -529,7 +526,7 @@ with tabs[0]:
 
                             # Lookback penceresi ile eğitim verisi hazırlama
                             X_train, y_train = [], []
-                            lookback = 15
+                            lookback = 50
                             if len(ts_scaled) <= lookback:
                                 st.error(f"LSTM: Eğitim için yeterli veri yok. En az {lookback + 1} veri noktası gerekli.")
                                 st.stop()
@@ -544,14 +541,12 @@ with tabs[0]:
 
                             # LSTM modelini oluşturma
                             model = Sequential()
-                            model.add(LSTM(units=100, return_sequences=True, input_shape=(X_train.shape[1], 1)))
-                            model.add(LSTM(units=100, return_sequences=False))
-                            model.add(Dense(units=25))
-                            model.add(Dense(units=1))
-
-                            # Modeli derleme ve eğitme
-                            model.compile(optimizer='adam', loss='mean_squared_error')
-                            model.fit(X_train, y_train, epochs=20, batch_size=16, verbose=0) # verbose=0 ile eğitim çıktısını gizle
+                            model.add(LSTM(25, input_shape=(lookback, 1)))
+                            model.add(Dropout(0.1))
+                            model.add(Dense(1))
+                            model.compile(loss='mse', optimizer='adam')
+                            model.fit(X_train, y_train, epochs=100, batch_size=24, verbose=1)
+                            model.fit(X_train, y_train, epochs=5, batch_size=2, verbose=0)
 
                             # Gelecek tahminleri için döngü
                             last_values = ts_scaled[-lookback:].reshape(1, lookback, 1) # Son lookback değeri
