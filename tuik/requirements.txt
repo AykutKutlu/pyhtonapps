@@ -1,0 +1,14 @@
+hmmlearn
+matplotlib
+numpy
+openpyxl
+pandas
+plotly
+pyreadstat
+scikit-learn
+seaborn
+statsmodels
+streamlit
+tensorflow
+xgboost
+yfinance
