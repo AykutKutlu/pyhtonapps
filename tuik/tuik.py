@@ -8,32 +8,28 @@ st.set_page_config(page_title="Fiyat Hesaplama Dashboard", layout="wide")
 
 # --- Data Loading and Wrangling ---
 # Ensure Excel files exist
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # script'in bulunduğu klasör
-DATA_DIR = os.path.join(BASE_DIR, "tuik")
+excel_file1_path = "harcama gruplarina gore endeks sonuclari (5).xlsx"
+excel_file2_path = "pivot.xlsx"
 
-csv_file1_path = os.path.join(DATA_DIR, "harcama gruplarina gore endeks sonuclari (5).csv")
-csv_file2_path = os.path.join(DATA_DIR, "pivot.csv")
-
-
-if not os.path.exists(csv_file1_path):
-    st.error(f"Error: The file '{csv_file1_path}' was not found.")
+if not os.path.exists(excel_file1_path):
+    st.error(f"Error: The file '{excel_file1_path}' was not found.")
     st.stop()
 
-if not os.path.exists(csv_file2_path):
-    st.error(f"Error: The file '{csv_file2_path}' was not found.")
+if not os.path.exists(excel_file2_path):
+    st.error(f"Error: The file '{excel_file2_path}' was not found.")
     st.stop()
 
 try:
-    tuik_grup = pd.read_csv(csv_file1_path)
-    tuik_urun = pd.read_csv(csv_file2_path)
+    tuik_grup = pd.read_excel(excel_file1_path, engine='openpyxl')
+    tuik_urun = pd.read_excel(excel_file2_path, engine='openpyxl')
 except Exception as e:
-    st.error(f"An error occurred while reading the CSV files: {e}")
+    st.error(f"An error occurred while reading the Excel files: {e}")
     st.stop()
 
 # Data Cleaning (tuik_urun)
 # Corrected: Drop the first column to match the R code's behavior
-tuik_urun = tuik_urun.iloc[:, 1:]
-tuik_urun = tuik_urun.iloc[3:412, :]
+# Slicing the last 3 columns to handle any extra empty columns in the excel file
+tuik_urun = tuik_urun.iloc[3:412, -3:]
 tuik_urun.columns = ["X.1", "X.2", "X.3"]
 tuik_urun = tuik_urun.drop(columns="X.2")
 tuik_urun[['kod', 'item']] = tuik_urun['X.1'].str.split(r'\.\s*', n=1, expand=True)
