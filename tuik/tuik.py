@@ -8,8 +8,12 @@ st.set_page_config(page_title="Fiyat Hesaplama Dashboard", layout="wide")
 
 # --- Data Loading and Wrangling ---
 # Ensure Excel files exist
-csv_file1_path = "harcama gruplarina gore endeks sonuclari (5).csv"
-csv_file2_path = "pivot.csv"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # script'in bulunduğu klasör
+DATA_DIR = os.path.join(BASE_DIR, "tuik")
+
+csv_file1_path = os.path.join(DATA_DIR, "harcama gruplarina gore endeks sonuclari (5).csv")
+csv_file2_path = os.path.join(DATA_DIR, "pivot.csv")
+
 
 if not os.path.exists(csv_file1_path):
     st.error(f"Error: The file '{csv_file1_path}' was not found.")
