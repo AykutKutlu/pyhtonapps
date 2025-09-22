@@ -8,7 +8,7 @@ st.set_page_config(page_title="Fiyat Hesaplama Dashboard", layout="wide")
 
 # --- Data Loading and Wrangling ---
 # Ensure Excel files exist
-csv_file1_path = "harcama_gruplarina_gore_endeks_sonuclari.csv"
+csv_file1_path = "harcama gruplarina gore endeks sonuclari (5).csv"
 csv_file2_path = "pivot.csv"
 
 if not os.path.exists(csv_file1_path):
