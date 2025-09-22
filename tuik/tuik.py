@@ -8,22 +8,22 @@ st.set_page_config(page_title="Fiyat Hesaplama Dashboard", layout="wide")
 
 # --- Data Loading and Wrangling ---
 # Ensure Excel files exist
-excel_file1_path = "harcama gruplarina gore endeks sonuclari (5).xlsx"
-excel_file2_path = "pivot.xlsx"
+csv_file1_path = "harcama_gruplarina_gore_endeks_sonuclari.csv"
+csv_file2_path = "pivot.csv"
 
-if not os.path.exists(excel_file1_path):
-    st.error(f"Error: The file '{excel_file1_path}' was not found.")
+if not os.path.exists(csv_file1_path):
+    st.error(f"Error: The file '{csv_file1_path}' was not found.")
     st.stop()
 
-if not os.path.exists(excel_file2_path):
-    st.error(f"Error: The file '{excel_file2_path}' was not found.")
+if not os.path.exists(csv_file2_path):
+    st.error(f"Error: The file '{csv_file2_path}' was not found.")
     st.stop()
 
 try:
-    tuik_grup = pd.read_excel(excel_file1_path, engine='openpyxl')
-    tuik_urun = pd.read_excel(excel_file2_path, engine='openpyxl')
+    tuik_grup = pd.read_csv(csv_file1_path)
+    tuik_urun = pd.read_csv(csv_file2_path)
 except Exception as e:
-    st.error(f"An error occurred while reading the Excel files: {e}")
+    st.error(f"An error occurred while reading the CSV files: {e}")
     st.stop()
 
 # Data Cleaning (tuik_urun)
