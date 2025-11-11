@@ -391,7 +391,10 @@ if uploaded_file:
                                     if len(uniq) > 2:
                                         st.error("Dependent variable must have two classes for logistic regression.")
                                         st.stop()
-                                    y = (y == uniq[1]).astype(int) if len(uniq) == 2 else y.astype(int)
+                                    if len(uniq) == 2:
+                                        y = (y == uniq[1]).astype(int)
+                                    else:
+                                        y = y.astype(int)
                                 else:
                                     if y_raw.nunique() > 2:
                                         st.error("Dependent variable must have two classes for logistic regression.")
@@ -487,8 +490,142 @@ if uploaded_file:
                             st.download_button("📥 Download prediction results (CSV)", data=csv, file_name="targeting_results.csv", mime="text/csv")
 
         # ------------------------------
-        # 4) SEVERITY (placeholder)
+        # 4) SEVERITY
         # ------------------------------
         with tab_severity:
-            st.header("Severity - Placeholder")
-            st.info("This page will be filled later. Tools related to severity will appear here.")
+            st.header("Severity - Descriptive by Severity Groups")
+            st.markdown("The dataset must already contain variables named 'severity_groups' (categorical) and 'severity_index' (numeric). Select additional categorical breakdown variables to slice the descriptive analysis.")
+
+            # verify required columns exist
+            if 'severity_groups' not in df.columns or 'severity_index' not in df.columns:
+                st.error("Dataset must contain columns named 'severity_groups' and 'severity_index'.")
+            else:
+                # allow user to pick categorical breakdown variables (these will be used to further split/group)
+                breakdown_choices = [c for c in cat_cols if c != 'severity_groups']
+                breakdown_vars = st.multiselect("Categorical breakdown variables (optional)", breakdown_choices, key="severity_breakdowns")
+
+                chart_type = st.selectbox("Chart type", ["Box plot", "Violin plot", "Bar (group mean)", "Histogram", "Density (KDE)"], index=0, key="severity_chart")
+                max_levels_warn = 30
+
+                if st.button("Run severity analysis", key="run_severity"):
+                    cols = ['severity_groups', 'severity_index'] + breakdown_vars
+                    df_sev = df.loc[:, cols].dropna()
+                    if df_sev.empty:
+                        st.error("No valid data after dropping missing values for the selected variables.")
+                    else:
+                        # if multiple breakdown vars, create a combined breakdown label
+                        if breakdown_vars:
+                            df_sev['_breakdown'] = df_sev[breakdown_vars].astype(str).agg(" | ".join, axis=1)
+                            breakdown_col = '_breakdown'
+                        else:
+                            breakdown_col = None
+
+                        # counts of groups
+                        n_sev_groups = df_sev['severity_groups'].nunique()
+                        if n_sev_groups > max_levels_warn:
+                            st.warning(f"'severity_groups' has {n_sev_groups} distinct levels — consider collapsing levels.")
+
+                        if breakdown_col:
+                            n_blevels = df_sev[breakdown_col].nunique()
+                            if n_blevels > max_levels_warn:
+                                st.warning(f"Combined breakdown has {n_blevels} distinct levels — plots may be cluttered.")
+
+                        # Descriptive stats by severity_groups (and breakdown if provided)
+                        if breakdown_col:
+                            desc = df_sev.groupby(['severity_groups', breakdown_col])['severity_index'].agg(
+                                count='count',
+                                mean='mean',
+                                median=lambda x: x.median(),
+                                std='std',
+                                min='min',
+                                p25=lambda x: np.percentile(x,25),
+                                p75=lambda x: np.percentile(x,75),
+                                max='max'
+                            ).reset_index()
+                        else:
+                            desc = df_sev.groupby('severity_groups')['severity_index'].agg(
+                                count='count',
+                                mean='mean',
+                                median=lambda x: x.median(),
+                                std='std',
+                                min='min',
+                                p25=lambda x: np.percentile(x,25),
+                                p75=lambda x: np.percentile(x,75),
+                                max='max'
+                            ).reset_index()
+
+                        st.subheader("Group-level descriptive statistics")
+                        st.dataframe(desc.round(4))
+
+                        # Show group sizes
+                        st.subheader("Group sizes")
+                        if breakdown_col:
+                            sizes = df_sev.groupby(['severity_groups', breakdown_col]).size().reset_index(name='count')
+                        else:
+                            sizes = df_sev['severity_groups'].value_counts().rename_axis('severity_groups').reset_index(name='count')
+                        st.dataframe(sizes)
+
+                        # Visualization
+                        st.subheader("Visualization")
+                        try:
+                            if chart_type in ("Box plot", "Violin plot"):
+                                if breakdown_col:
+                                    if chart_type == "Box plot":
+                                        fig = px.box(df_sev, x='severity_groups', y='severity_index', color=breakdown_col, points="outliers", title=f"Box plot of severity_index by severity_groups and breakdown")
+                                    else:
+                                        fig = px.violin(df_sev, x='severity_groups', y='severity_index', color=breakdown_col, box=True, points="outliers", title=f"Violin plot of severity_index by severity_groups and breakdown")
+                                else:
+                                    if chart_type == "Box plot":
+                                        fig = px.box(df_sev, x='severity_groups', y='severity_index', points="outliers", title=f"Box plot of severity_index by severity_groups")
+                                    else:
+                                        fig = px.violin(df_sev, x='severity_groups', y='severity_index', box=True, points="outliers", title=f"Violin plot of severity_index by severity_groups")
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            elif chart_type == "Bar (group mean)":
+                                if breakdown_col:
+                                    agg = df_sev.groupby(['severity_groups', breakdown_col])['severity_index'].mean().reset_index(name='mean')
+                                    fig = px.bar(agg, x='severity_groups', y='mean', color=breakdown_col, barmode='group', title=f"Group mean of severity_index by severity_groups and breakdown")
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    st.dataframe(agg.round(4))
+                                else:
+                                    agg = df_sev.groupby('severity_groups')['severity_index'].mean().reset_index(name='mean')
+                                    fig = px.bar(agg, x='severity_groups', y='mean', title=f"Group mean of severity_index by severity_groups")
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    st.dataframe(agg.round(4))
+
+                            elif chart_type == "Histogram":
+                                group_sel = st.selectbox("Histogram: choose severity_groups or All", ['All'] + sorted(df_sev['severity_groups'].unique().tolist()), key="hist_group_sel")
+                                if group_sel == 'All':
+                                    if breakdown_col:
+                                        fig = px.histogram(df_sev, x='severity_index', color=breakdown_col, nbins=40, title="Histogram of severity_index (all severity groups, colored by breakdown)", marginal="rug")
+                                    else:
+                                        fig = px.histogram(df_sev, x='severity_index', nbins=40, title="Histogram of severity_index (all groups)", marginal="rug")
+                                else:
+                                    subset = df_sev[df_sev['severity_groups'] == group_sel]
+                                    if breakdown_col:
+                                        fig = px.histogram(subset, x='severity_index', color=breakdown_col, nbins=40, title=f"Histogram of severity_index for {group_sel} (colored by breakdown)", marginal="rug")
+                                    else:
+                                        fig = px.histogram(subset, x='severity_index', nbins=40, title=f"Histogram of severity_index for {group_sel}", marginal="rug")
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            else:  # Density (approx via histograms normalized)
+                                sel_groups = st.multiselect("Density: select breakdown levels to plot (leave empty = all)", sorted(df_sev[breakdown_col].unique().tolist()) if breakdown_col else [], default=None, key="density_groups")
+                                if breakdown_col:
+                                    plot_df = df_sev if not sel_groups else df_sev[df_sev[breakdown_col].isin(sel_groups)]
+                                    if plot_df.empty:
+                                        st.warning("No data for selected breakdown levels.")
+                                    else:
+                                        fig = px.histogram(plot_df, x='severity_index', color=breakdown_col, histnorm='density', nbins=60, barmode='overlay', opacity=0.6, title="Density (approx.) of severity_index by breakdown")
+                                        st.plotly_chart(fig, use_container_width=True)
+                                else:
+                                    fig = px.histogram(df_sev, x='severity_index', histnorm='density', nbins=60, title="Density (approx.) of severity_index")
+                                    st.plotly_chart(fig, use_container_width=True)
+
+                        except Exception as e:
+                            st.error(f"Plotting failed: {e}")
+
+                        # Offer downloads
+                        csv_desc = desc.to_csv(index=False).encode('utf-8')
+                        st.download_button("📥 Download group descriptive stats (CSV)", data=csv_desc, file_name="severity_groups_stats.csv", mime="text/csv")
+                        csv_raw = df_sev.to_csv(index=False).encode('utf-8')
+                        st.download_button("📥 Download filtered raw data (CSV)", data=csv_raw, file_name="severity_filtered_data.csv", mime="text/csv")
