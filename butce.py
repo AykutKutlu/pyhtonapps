@@ -6,235 +6,271 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 import sqlite3
 import os
+import ollama
 
-# --- DOSYA YOLU AYARI ---
+# --- DOSYA YOLU VE SAYFA AYARI ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "giderler.db")
+DB_PATH = os.path.join(BASE_DIR, "hane_finans.db")
+st.set_page_config(page_title="Hanehalkı Finans Merkezi + AI", layout="wide", page_icon="🏠")
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Finansal Dashboard Pro", layout="wide", page_icon="📊")
-
-# --- VERİTABANI FONKSİYONLARI ---
+# --- VERİTABANI SİSTEMİ ---
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS giderler
-                 (ID TEXT PRIMARY KEY, odeme_tarihi TEXT, gider_kalemi TEXT, 
-                  miktar REAL, tip TEXT, zam_ayi TEXT, zam_orani REAL)''')
-    try:
-        c.execute("ALTER TABLE giderler ADD COLUMN zam_ayi TEXT DEFAULT 'Yok'")
-        c.execute("ALTER TABLE giderler ADD COLUMN zam_orani REAL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+                 (ID TEXT PRIMARY KEY, kisi TEXT, odeme_tarihi TEXT, gider_kalemi TEXT, 
+                  miktar REAL, zam_ayi TEXT, zam_orani REAL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS gelirler
+                 (kisi TEXT PRIMARY KEY, aylik_gelir REAL, birikim REAL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS maas_zamlari
+                 (kisi TEXT, zam_tarihi TEXT, zam_orani REAL, PRIMARY KEY(kisi, zam_tarihi))''')
     conn.commit()
     conn.close()
 
-def load_data():
+def load_all_data():
     if not os.path.exists(DB_PATH):
-        return pd.DataFrame(columns=['ID', 'odeme_tarihi', 'gider_kalemi', 'miktar', 'tip', 'zam_ayi', 'zam_orani'])
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM giderler", conn)
+    gider_df = pd.read_sql_query("SELECT * FROM giderler", conn)
+    gelir_df = pd.read_sql_query("SELECT * FROM gelirler", conn)
+    zam_df = pd.read_sql_query("SELECT * FROM maas_zamlari", conn)
     conn.close()
-    if df.empty:
-        return pd.DataFrame(columns=['ID', 'odeme_tarihi', 'gider_kalemi', 'miktar', 'tip', 'zam_ayi', 'zam_orani'])
+    if not gider_df.empty:
+        gider_df['odeme_tarihi'] = pd.to_datetime(gider_df['odeme_tarihi'])
+    return gider_df, gelir_df, zam_df
+
+# --- PROJEKSİYON HESAPLAMA MOTORU (Global Erişim İçin) ---
+def calculate_projection(gider_df, gelir_df, maas_zam_df, secilen_kisi="Tüm Hane"):
+    if gider_df.empty or gelir_df.empty:
+        return pd.DataFrame()
+
+    min_date = gider_df['odeme_tarihi'].min().replace(day=1)
+    max_date = gider_df['odeme_tarihi'].max().replace(day=1)
+    current_date = min_date
+    date_range = []
+    while current_date <= max_date or len(date_range) < 12:
+        date_range.append(current_date)
+        current_date += relativedelta(months=1)
+
+    tr_aylar = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+    hane_proj = []
     
-    df.columns = ['ID', 'odeme_tarihi', 'gider_kalemi', 'miktar', 'tip', 'zam_ayi', 'zam_orani']
-    df['odeme_tarihi'] = pd.to_datetime(df['odeme_tarihi'])
-    return df
+    if secilen_kisi == "Tüm Hane":
+        aktif_gelirler = gelir_df.set_index('kisi')['aylik_gelir'].to_dict()
+        kasa = gelir_df['birikim'].sum()
+    else:
+        kisi_data = gelir_df[gelir_df['kisi'] == secilen_kisi].iloc[0]
+        aktif_gelirler = {secilen_kisi: kisi_data['aylik_gelir']}
+        kasa = kisi_data['birikim']
 
-def update_item_zam(kalem_adi, yeni_zam_ayi, yeni_zam_orani):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE giderler SET zam_ayi = ?, zam_orani = ? WHERE gider_kalemi = ?", 
-                 (yeni_zam_ayi, yeni_zam_orani, kalem_adi))
-    conn.commit()
-    conn.close()
+    for d in date_range:
+        ay_str = d.strftime("%Y-%m")
+        ay_ad = tr_aylar[d.month-1]
+        
+        for k in aktif_gelirler:
+            ozel_zam = maas_zam_df[(maas_zam_df['kisi'] == k) & (maas_zam_df['zam_tarihi'] == ay_str)]
+            if not ozel_zam.empty:
+                aktif_gelirler[k] *= (1 + ozel_zam['zam_orani'].values[0]/100)
+        
+        toplam_gelir = sum(aktif_gelirler.values())
+        
+        if secilen_kisi == "Tüm Hane":
+            aylik_g_df = gider_df[gider_df['odeme_tarihi'].dt.strftime('%Y-%m') == ay_str]
+        else:
+            aylik_g_df = gider_df[(gider_df['odeme_tarihi'].dt.strftime('%Y-%m') == ay_str) & (gider_df['kisi'] == secilen_kisi)]
+        
+        toplam_gider = 0
+        for _, r in aylik_g_df.iterrows():
+            tut = r['miktar']
+            if r['zam_ayi'] == ay_ad: tut *= (1 + r['zam_orani']/100)
+            toplam_gider += tut
+        
+        tasarruf = toplam_gelir - toplam_gider
+        kasa += tasarruf
+        hane_proj.append({"Ay": ay_str, "Gelir": toplam_gelir, "Gider": toplam_gider, "Bakiye": kasa, "Tasarruf": tasarruf})
+    
+    return pd.DataFrame(hane_proj)
 
-def delete_from_db(id_val):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("DELETE FROM giderler WHERE ID = ?", (id_val,))
-    conn.commit()
-    conn.close()
-
-def clear_all_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("DELETE FROM giderler")
-    conn.commit()
-    conn.close()
-
+# --- BAŞLATMA ---
 init_db()
-if 'gider_listesi' not in st.session_state:
-    st.session_state.gider_listesi = load_data()
+gider_df, gelir_df, maas_zam_df = load_all_data()
 
-# --- YAN PANEL ---
-st.sidebar.header("⚙️ Finansal Parametreler")
-mevcut_birikim = st.sidebar.number_input("Mevcut Birikim (TL)", min_value=0.0, value=50000.0)
-baslangic_gelir = st.sidebar.number_input("Güncel Maaş (TL)", min_value=0.0, value=35000.0)
+tabs = st.tabs(["👤 Kişisel Tanımlamalar", "💸 Ödeme Girişi", "📊 Detaylı Analiz", "🤖 AI Finans Koçu", "⚙️ Yönetim"])
 
-st.sidebar.divider()
-st.sidebar.header("📈 Maaş Zam Senaryosu")
-subat_zammi = st.sidebar.slider("Şubat Zam Oranı (%)", 0, 100, 30)
-agustos_zammi = st.sidebar.slider("Ağustos Zam Oranı (%)", 0, 100, 20)
-
-if st.sidebar.button("🗑️ Tüm Verileri Temizle"):
-    clear_all_db()
-    st.session_state.gider_listesi = load_data()
-    st.rerun()
-
-# --- ANA EKRAN ---
-st.title("🛡️ Akıllı Finansal Yönetim")
-tab1, tab2, tab3, tab4 = st.tabs(["➕ Ödeme Girişi", "📊 Detaylı Raporlama", "⚙️ Zam Yönetimi", "❌ Kayıt Silme"])
-
-# --- TAB 1: ÖDEME GİRİŞİ ---
-with tab1:
+# --- TAB 1: KİŞİSEL ---
+with tabs[0]:
+    st.subheader("👥 Hane Üyeleri")
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("📍 Tek Seferlik Ödeme")
-        with st.form("tek"):
-            t_tarih = st.date_input("Ödeme Tarihi", date.today())
-            t_kalem = st.text_input("Gider Kalemi")
-            t_miktar = st.number_input("Tutar", min_value=0.0)
+        with st.form("kisi_ekle"):
+            k_ad = st.text_input("Kişi Adı")
+            k_gelir = st.number_input("Maaş (TL)", min_value=0.0)
+            k_birikim = st.number_input("Birikim (TL)", min_value=0.0)
             if st.form_submit_button("Kaydet"):
                 conn = sqlite3.connect(DB_PATH)
-                yid = f"{int(datetime.now().timestamp())}_0_{t_kalem[:3]}"
-                conn.execute("INSERT INTO giderler VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                             (yid, t_tarih.strftime('%Y-%m-%d'), t_kalem, t_miktar, "Değişken", "Yok", 0))
-                conn.commit()
-                conn.close()
-                st.session_state.gider_listesi = load_data()
+                conn.execute("INSERT OR REPLACE INTO gelirler VALUES (?, ?, ?)", (k_ad, k_gelir, k_birikim))
+                conn.commit(); conn.close()
                 st.rerun()
-
     with c2:
-        st.subheader("🔄 Sabit Gider / Taksit")
-        with st.form("sabit"):
-            s_tarih = st.date_input("Başlangıç Tarihi", date.today())
-            s_kalem = st.text_input("Gider Tanımı")
-            s_miktar = st.number_input("Aylık Tutar", min_value=0.0)
-            s_sure = st.number_input("Süre (Ay)", min_value=1, value=12)
-            if st.form_submit_button("Planı Oluştur"):
+        if not gelir_df.empty: st.dataframe(gelir_df, use_container_width=True, hide_index=True)
+
+# --- TAB 2: ÖDEME ---
+with tabs[1]:
+    if not gelir_df.empty:
+        st.subheader("📝 Ödeme Girişi")
+        with st.form("gider_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                g_kisi = st.selectbox("Ödeyen", gelir_df['kisi'])
+                g_kalem = st.text_input("Gider Tanımı")
+            with col2:
+                g_miktar = st.number_input("Tutar (TL)", min_value=0.0)
+                g_tarih = st.date_input("Başlangıç", date.today())
+            with col3:
+                g_sure = st.number_input("Süre (Ay)", min_value=1, value=1)
+            if st.form_submit_button("Sisteme İşle"):
                 conn = sqlite3.connect(DB_PATH)
-                for i in range(int(s_sure)):
-                    yeni_tarih = s_tarih + relativedelta(months=i)
-                    yid = f"{int(datetime.now().timestamp())}_{i}_{s_kalem[:3]}"
-                    conn.execute("INSERT INTO giderler VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                                 (yid, yeni_tarih.strftime('%Y-%m-%d'), s_kalem, s_miktar, "Sabit", "Yok", 0))
-                conn.commit()
-                conn.close()
-                st.session_state.gider_listesi = load_data()
+                ts = int(datetime.now().timestamp())
+                for i in range(int(g_sure)):
+                    y_tar = g_tarih + relativedelta(months=i)
+                    yid = f"{ts}_{i}_{g_kisi[:2]}"
+                    conn.execute("INSERT INTO giderler VALUES (?,?,?,?,?,?,?)", (yid, g_kisi, y_tar.strftime('%Y-%m-%d'), g_kalem, g_miktar, "Yok", 0))
+                conn.commit(); conn.close()
                 st.rerun()
 
-# --- TAB 2: DETAYLI RAPORLAMA (İSTEDİĞİN ESKİ HALİ) ---
-with tab2:
-    if not st.session_state.gider_listesi.empty:
-        df = st.session_state.gider_listesi.copy()
+# --- TAB 3: ANALİZ ---
+with tabs[2]:
+    if not gider_df.empty and not gelir_df.empty:
+        sel_k = st.selectbox("Analiz Kapsamı Seçin:", ["Tüm Hane"] + list(gelir_df['kisi'].unique()))
+        h_df = calculate_projection(gider_df, gelir_df, maas_zam_df, sel_k)
         
-        # Projeksiyon Hazırlığı
-        proj_data = []
-        baslangic_ayi = date.today() + relativedelta(months=1)
-        kasa = mevcut_birikim
-        guncel_gelir = baslangic_gelir
-        tr_aylar_list = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
-
-        for i in range(12):
-            ay_dt = baslangic_ayi + relativedelta(months=i)
-            ay_tr_isim = tr_aylar_list[ay_dt.month - 1]
-            ay_str = ay_dt.strftime("%Y-%m")
-
-            # Gelir Zamları
-            if ay_dt.month == 2: guncel_gelir *= (1 + subat_zammi/100)
-            if ay_dt.month == 8: guncel_gelir *= (1 + agustos_zammi/100)
-
-            # Giderler ve Özel Zamlar
-            aylik_df = df[df['odeme_tarihi'].dt.strftime('%Y-%m') == ay_str].copy()
-            toplam_harcama = 0
-            for _, row in aylik_df.iterrows():
-                m = row['miktar']
-                if row['zam_ayi'] == ay_tr_isim:
-                    m *= (1 + row['zam_orani']/100)
-                toplam_harcama += m
-            
-            tasarruf = guncel_gelir - toplam_harcama
-            kasa += tasarruf
-            proj_data.append({"Ay": ay_str, "Gelir": guncel_gelir, "Gider": toplam_harcama, "Bakiye": kasa, "Aylık Tasarruf": tasarruf})
+        # 1. ÜST METRİKLER VE GAUGE
+        st.subheader("📌 Temel Finansal Göstergeler")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Aylık Ortalama Gider", f"{h_df['Gider'].mean():,.0f} TL")
+        m2.metric("Projeksiyon Sonu Bakiye", f"{h_df['Bakiye'].iloc[-1]:,.0f} TL", delta=f"{h_df['Bakiye'].iloc[-1] - h_df['Bakiye'].iloc[0]:,.0f}")
         
-        proj_df = pd.DataFrame(proj_data)
-
-        # Üst Metrikler
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Ortalama Aylık Gider", f"{proj_df['Gider'].mean():,.0f} TL")
-        m2.metric("Öngörülen 12 Aylık Birikim", f"{kasa:,.0f} TL")
-        avg_savings_rate = (1 - (proj_df['Gider'].mean() / proj_df['Gelir'].mean())) * 100
-        m3.metric("Bütçe Sağlığı", f"%{avg_savings_rate:.1f}", delta="Tasarruf Oranı")
+        savings_rate = (h_df['Tasarruf'].sum() / h_df['Gelir'].sum()) * 100
+        m3.metric("Genel Tasarruf Oranı", f"%{savings_rate:.1f}")
+        
+        expense_ratio = (h_df['Gider'].mean() / h_df['Gelir'].mean()) * 100
+        m4.metric("Gider/Gelir Dengesi", f"%{expense_ratio:.1f}", delta="-İyi" if expense_ratio < 70 else "+Riskli", delta_color="inverse")
 
         st.divider()
 
-        # GRAFİK 1: AYLIK GİDER TRENDİ
-        st.subheader("📉 Aylık Gider Değişimi (Trend)")
-        fig_line = px.line(proj_df, x='Ay', y='Gider', markers=True, 
-                           line_shape="spline", color_discrete_sequence=['#E74C3C'])
-        fig_line.update_layout(hovermode="x unified")
-        st.plotly_chart(fig_line, use_container_width=True)
-
-        col_left, col_right = st.columns(2)
+        # 2. ANA NAKİT AKIŞI GRAFİĞİ (GELİR - GİDER - BAKİYE)
+        st.subheader("📉 Nakit Akışı ve Varlık İlerlemesi")
+        fig_main = go.Figure()
+        fig_main.add_trace(go.Scatter(x=h_df['Ay'], y=h_df['Gelir'], name="Aylık Gelir", line=dict(color="#27AE60", width=4, shape='hv')))
+        fig_main.add_trace(go.Bar(x=h_df['Ay'], y=h_df['Gider'], name="Aylık Gider", marker_color="#E74C3C", opacity=0.6))
+        fig_main.add_trace(go.Scatter(x=h_df['Ay'], y=h_df['Bakiye'], name="Kümülatif Varlık", yaxis="y2", line=dict(color="#3498DB", dash="dot", width=3)))
         
-        with col_left:
-            # GRAFİK 2: HARCAMA TİPİ DAĞILIMI
-            st.subheader("⚖️ Gider Yapısı (Sabit vs Değişken)")
-            tip_df = df.groupby('tip')['miktar'].sum().reset_index()
-            fig_donut = px.pie(tip_df, values='miktar', names='tip', hole=0.5,
-                               color_discrete_map={'Sabit': '#34495E', 'Değişken': '#F1C40F'})
-            st.plotly_chart(fig_donut, use_container_width=True)
+        fig_main.update_layout(
+            yaxis2=dict(title="Kümülatif Varlık (TL)", overlaying="y", side="right"),
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_main, use_container_width=True)
+        
 
-        with col_right:
-            # GRAFİK 3: GELİR/GİDER KIYASLAMASI
-            st.subheader("📊 Nakit Giriş/Çıkış Dengesi")
-            fig_bar = go.Figure()
-            fig_bar.add_trace(go.Bar(x=proj_df['Ay'], y=proj_df['Gelir'], name='Gelir', marker_color='#27AE60'))
-            fig_bar.add_trace(go.Bar(x=proj_df['Ay'], y=proj_df['Gider'], name='Gider', marker_color='#E67E22'))
-            fig_bar.update_layout(barmode='group')
-            st.plotly_chart(fig_bar, use_container_width=True)
+        st.divider()
 
-        # GRAFİK 4: VARLIK PROJEKSİYONU
-        st.subheader("💰 Toplam Varlık Gelişimi")
-        fig_area = px.area(proj_df, x="Ay", y="Bakiye", color_discrete_sequence=['#2ECC71'])
-        st.plotly_chart(fig_area, use_container_width=True)
+        # 3. PASTA GRAFİKLER (DAĞILIM)
+        col_pie1, col_pie2 = st.columns(2)
+        with col_pie1:
+            st.subheader("🍕 Gider Kalemi Dağılımı")
+            sec_ay = st.selectbox("Dağılım Ayı Seçin:", h_df['Ay'], index=0)
+            ay_g = gider_df[gider_df['odeme_tarihi'].dt.strftime('%Y-%m') == sec_ay]
+            if sel_k != "Tüm Hane": ay_g = ay_g[ay_g['kisi'] == sel_k]
+            
+            if not ay_g.empty:
+                st.plotly_chart(px.pie(ay_g, values='miktar', names='gider_kalemi', hole=0.5, color_discrete_sequence=px.colors.qualitative.Set3), use_container_width=True)
+                
+            else:
+                st.info("Seçilen ayda harcama kaydı yok.")
+
+        with col_pie2:
+            st.subheader("👥 Hane Paylaşım Analizi")
+            if sel_k == "Tüm Hane":
+                ay_kisi = ay_g.groupby('kisi')['miktar'].sum().reset_index()
+                st.plotly_chart(px.pie(ay_kisi, values='miktar', names='kisi', hole=0.5, color_discrete_sequence=px.colors.sequential.RdBu), use_container_width=True)
+                
+            else:
+                st.write(f"**{sel_k}** için bu ayki toplam harcama: **{ay_g['miktar'].sum():,.2f} TL**")
+
+        st.divider()
+
+        # 4. TASARRUF TRENDİ VE BİRİKİM HIZI
+        st.subheader("💰 Aylık Tasarruf ve Birikim Trendi")
+        fig_tas = px.area(h_df, x="Ay", y="Tasarruf", title="Aylık Net Birikim (Gelir - Gider)", color_discrete_sequence=['#F1C40F'])
+        fig_tas.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Kritik Eşik")
+        st.plotly_chart(fig_tas, use_container_width=True)
+        
+
+        st.subheader("📋 Detaylı Projeksiyon Tablosu")
+        st.dataframe(h_df.style.format({"Gelir": "{:,.0f} TL", "Gider": "{:,.0f} TL", "Bakiye": "{:,.0f} TL", "Tasarruf": "{:,.0f} TL"}), use_container_width=True)
 
     else:
-        st.info("Analiz için henüz veri girişi yapılmadı.")
-
-# --- TAB 3: ZAM YÖNETİMİ ---
-with tab3:
-    st.subheader("🛠️ Gider Bazlı Zam Tanımlama")
-    df_raw = st.session_state.gider_listesi
-    if not df_raw.empty:
-        benzersiz_kalemler = sorted(df_raw['gider_kalemi'].unique())
-        secilen_kalem = st.selectbox("Zam Uygulanacak Gider Kalemini Seçin:", benzersiz_kalemler)
-        item_data = df_raw[df_raw['gider_kalemi'] == secilen_kalem].iloc[0]
-        st.info(f"Kalem: **{secilen_kalem}** | Aktif Zam: **{item_data['zam_ayi']}** ayında **%{item_data['zam_orani']}**")
-        tr_aylar = ["Yok", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
-        c_z1, c_z2 = st.columns(2)
-        with c_z1:
-            curr_month_idx = tr_aylar.index(item_data['zam_ayi']) if item_data['zam_ayi'] in tr_aylar else 0
-            yeni_z_ayi = st.selectbox("Zam Uygulanacak Ay:", tr_aylar, index=curr_month_idx)
-        with c_z2:
-            yeni_z_orani = st.number_input("Zam Oranı (%):", min_value=0.0, value=float(item_data['zam_orani']))
-        if st.button(f"{secilen_kalem} Ayarlarını Güncelle"):
-            update_item_zam(secilen_kalem, yeni_z_ayi, yeni_z_orani)
-            st.session_state.gider_listesi = load_data()
-            st.success("Zam ayarları güncellendi!")
-            st.rerun()
+        st.warning("Lütfen 'Tanımlamalar' ve 'Ödemeler' sekmelerinden veri girişi yapın.")
+# --- TAB 4: AI KOÇ (OLLAMA) ---
+with tabs[3]:
+    st.subheader("🤖 AI Finansal Danışman (Ollama)")
+    # Analiz kısmındaki hesaplamayı AI için tekrar yapıyoruz (NameError engellemek için)
+    h_df_ai = calculate_projection(gider_df, gelir_df, maas_zam_df, "Tüm Hane")
+    
+    if not h_df_ai.empty:
+        if st.button("Bütçemi Analiz Et"):
+            with st.spinner("Llama 3 verileri yorumluyor..."):
+                prompt = f"""
+                Verilerimi analiz et ve Türkçe tavsiyeler ver:
+                - Aylık Gelir: {h_df_ai['Gelir'].mean():,.0f} TL
+                - Aylık Gider: {h_df_ai['Gider'].mean():,.0f} TL
+                - Tasarruf Oranı: %{(h_df_ai['Tasarruf'].sum()/h_df_ai['Gelir'].sum())*100:.1f}
+                - Gelecek 12 ay sonundaki para: {h_df_ai['Bakiye'].iloc[-1]:,.0f} TL
+                - En borçlu/harcamalı ay: {h_df_ai.loc[h_df_ai['Gider'].idxmax(), 'Ay']}
+                """
+                try:
+                    res = ollama.chat(model='llama3', messages=[
+                        {'role': 'system', 'content': 'Sen bir finans koçusun. Kısa ve aksiyon odaklı konuş.'},
+                        {'role': 'user', 'content': prompt}
+                    ])
+                    st.success("Analiz Tamamlandı")
+                    st.write(res['message']['content'])
+                except Exception as e:
+                    st.error(f"Ollama'ya ulaşılamadı. Hata: {e}")
     else:
-        st.info("Kayıt bulunmuyor.")
+        st.info("AI analizi için önce veri girin.")
 
-# --- TAB 4: KAYIT SİLME ---
-with tab4:
-    if not st.session_state.gider_listesi.empty:
-        all_df = st.session_state.gider_listesi.copy()
-        options = all_df['ID'].tolist()
-        def label_f(id_val):
-            r = all_df[all_df['ID'] == id_val].iloc[0]
-            return f"{r['odeme_tarihi'].strftime('%Y-%m-%d')} | {r['gider_kalemi']} | {r['miktar']} TL"
-        del_id = st.selectbox("Silinecek Kayıt:", options=options, format_func=label_f)
-        if st.button("Seçileni Sil"):
-            delete_from_db(del_id)
-            st.session_state.gider_listesi = load_data()
-            st.rerun()
+# --- TAB 5: YÖNETİM ---
+with tabs[4]:
+    st.subheader("⚙️ Yönetim")
+    # Zam Yönetimi (Gider & Maaş) ve Silme buraya...
+    c_y1, c_y2 = st.columns(2)
+    with c_y1:
+        st.write("💰 **Maaş Zammı**")
+        if not gelir_df.empty:
+            with st.form("m_zam"):
+                mzk = st.selectbox("Kişi", gelir_df['kisi'])
+                mzt = st.date_input("Ay").strftime("%Y-%m")
+                mzo = st.number_input("Artış %")
+                if st.form_submit_button("Kaydet"):
+                    conn = sqlite3.connect(DB_PATH); conn.execute("INSERT OR REPLACE INTO maas_zamlari VALUES (?,?,?)", (mzk, mzt, mzo))
+                    conn.commit(); conn.close(); st.rerun()
+    with c_y2:
+        st.write("🛒 **Gider Artışı**")
+        if not gider_df.empty:
+            with st.form("g_zam"):
+                gzk = st.selectbox("Kalem", sorted(gider_df['gider_kalemi'].unique()))
+                gza = st.selectbox("Ay", ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"])
+                gzo = st.number_input("Artış %")
+                if st.form_submit_button("Uygula"):
+                    conn = sqlite3.connect(DB_PATH); conn.execute("UPDATE giderler SET zam_ayi = ?, zam_orani = ? WHERE gider_kalemi = ?", (gza, gzo, gzk))
+                    conn.commit(); conn.close(); st.rerun()
+
+    st.divider()
+    if not gider_df.empty:
+        sel = st.dataframe(gider_df, hide_index=True, use_container_width=True, on_select="rerun", selection_mode="multi-row")
+        if sel.selection.rows and st.button("Seçili Kayıtları Sil"):
+            ids = gider_df.iloc[sel.selection.rows]['ID'].tolist()
+            conn = sqlite3.connect(DB_PATH); conn.executemany("DELETE FROM giderler WHERE ID = ?", [(x,) for x in ids])
+            conn.commit(); conn.close(); st.rerun()
