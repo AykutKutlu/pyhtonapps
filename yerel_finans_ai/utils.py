@@ -19,12 +19,21 @@ from xgboost import XGBRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler
 
-# Derin öğrenme katmanları (LSTM için)
+# Derin öğrenme katmanları (LSTM için) - PyTorch tercih edilir, TensorFlow alternatif olarak kullanılır
+try:
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+    _torch_available = True
+except Exception:
+    _torch_available = False
+
 try:
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import LSTM, Dense, Dropout
-except ImportError:
-    pass
+    _tf_available = True
+except Exception:
+    _tf_available = False
 
 # Gizli Markov Modeli (HMM için)
 from hmmlearn.hmm import GaussianHMM
@@ -236,48 +245,125 @@ def train_hmm_model(data, n_components=2, forecast_days=30):
         return None, str(e)
     
 def train_lstm_model(data, forecast_days=30, lookback=50):
+    """PyTorch tercihli LSTM. Eğer PyTorch yoksa, TensorFlow (Keras) fallback kullanılır."""
     try:
         scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_data = scaler.fit_transform(data.values.reshape(-1, 1))
+        scaled_data = scaler.fit_transform(data.values.reshape(-1, 1)).astype(np.float32)
 
         if len(scaled_data) <= lookback:
             return None, f"Yetersiz veri! En az {lookback + 1} veri noktası gerekli."
 
-        X_train, y_train = [], []
-        for i in range(lookback, len(scaled_data)):
-            X_train.append(scaled_data[i - lookback:i, 0])
-            y_train.append(scaled_data[i, 0])
+        # --- PyTorch implementation ---
+        if '_torch_available' in globals() and _torch_available:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        X_train, y_train = np.array(X_train), np.array(y_train)
-        X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
+            class PyLSTM(nn.Module):
+                def __init__(self, input_size=1, h1=32, h2=16, dropout=0.1):
+                    super().__init__()
+                    self.lstm1 = nn.LSTM(input_size, h1, batch_first=True)
+                    self.dropout1 = nn.Dropout(dropout)
+                    self.lstm2 = nn.LSTM(h1, h2, batch_first=True)
+                    self.dropout2 = nn.Dropout(dropout)
+                    self.fc = nn.Linear(h2, 1)
 
-        model = Sequential([
-            LSTM(32, return_sequences=True, input_shape=(lookback, 1)),
-            Dropout(0.1),
-            LSTM(16),
-            Dropout(0.1),
-            Dense(1)
-        ])
-        model.compile(optimizer='adam', loss='mse')
-        model.fit(X_train, y_train, epochs=20, batch_size=32, verbose=0)
+                def forward(self, x):
+                    out, _ = self.lstm1(x)
+                    out = self.dropout1(out)
+                    out, _ = self.lstm2(out)
+                    out = self.dropout2(out[:, -1, :])
+                    return self.fc(out)
 
-        current_batch = scaled_data[-lookback:].reshape(1, lookback, 1)
-        forecast_scaled = []
+            # Prepare training data
+            X_train = []
+            y_train = []
+            for i in range(lookback, len(scaled_data)):
+                X_train.append(scaled_data[i - lookback:i, 0])
+                y_train.append(scaled_data[i, 0])
 
-        for _ in range(forecast_days):
-            current_pred = model.predict(current_batch, verbose=0)[0]
-            forecast_scaled.append(current_pred)
-            new_val = current_pred.reshape(1, 1, 1)
-            current_batch = np.append(current_batch[:, 1:, :], new_val, axis=1)
+            X_train = np.array(X_train)
+            y_train = np.array(y_train)
 
-        forecast_rescaled = scaler.inverse_transform(np.array(forecast_scaled).reshape(-1, 1)).flatten()
-        
-        # --- KRİTİK DÜZELTME ---
-        # Tahminin başına gerçek verinin son fiyatını ekle
-        last_real_value = float(data.iloc[-1])
-        forecast_final = np.insert(forecast_rescaled, 0, last_real_value)
-        
-        return forecast_final, None
+            X_train_t = torch.tensor(X_train).unsqueeze(2).to(device)  # (N, seq, 1)
+            y_train_t = torch.tensor(y_train).unsqueeze(1).to(device)  # (N, 1)
+
+            model = PyLSTM().to(device)
+            criterion = nn.MSELoss()
+            optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+            model.train()
+            epochs = 20
+            batch_size = 32
+            n = len(X_train_t)
+            for epoch in range(epochs):
+                perm = np.random.permutation(n)
+                for i in range(0, n, batch_size):
+                    idx = perm[i:i+batch_size]
+                    bx = X_train_t[idx]
+                    by = y_train_t[idx]
+                    optimizer.zero_grad()
+                    preds = model(bx)
+                    loss = criterion(preds, by)
+                    loss.backward()
+                    optimizer.step()
+
+            # Recursive forecast
+            model.eval()
+            current_batch = torch.tensor(scaled_data[-lookback:]).unsqueeze(0).unsqueeze(2).to(device)
+            forecast_scaled = []
+            with torch.no_grad():
+                for _ in range(forecast_days):
+                    pred = model(current_batch).cpu().numpy().flatten()[0]
+                    forecast_scaled.append(pred)
+                    # shift and append
+                    new_seq = np.append(current_batch.cpu().numpy()[0,:,0][1:], pred)
+                    current_batch = torch.tensor(new_seq).reshape(1, lookback, 1).to(device)
+
+            forecast_rescaled = scaler.inverse_transform(np.array(forecast_scaled).reshape(-1, 1)).flatten()
+
+            # --- KRİTİK DÜZELTME ---
+            last_real_value = float(data.iloc[-1])
+            forecast_final = np.insert(forecast_rescaled, 0, last_real_value)
+
+            return forecast_final, None
+
+        # --- TensorFlow fallback (eski davranış) ---
+        elif '_tf_available' in globals() and _tf_available:
+            X_train, y_train = [], []
+            for i in range(lookback, len(scaled_data)):
+                X_train.append(scaled_data[i - lookback:i, 0])
+                y_train.append(scaled_data[i, 0])
+
+            X_train, y_train = np.array(X_train), np.array(y_train)
+            X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
+
+            model = Sequential([
+                LSTM(32, return_sequences=True, input_shape=(lookback, 1)),
+                Dropout(0.1),
+                LSTM(16),
+                Dropout(0.1),
+                Dense(1)
+            ])
+            model.compile(optimizer='adam', loss='mse')
+            model.fit(X_train, y_train, epochs=20, batch_size=32, verbose=0)
+
+            current_batch = scaled_data[-lookback:].reshape(1, lookback, 1)
+            forecast_scaled = []
+
+            for _ in range(forecast_days):
+                current_pred = model.predict(current_batch, verbose=0)[0]
+                forecast_scaled.append(current_pred)
+                new_val = current_pred.reshape(1, 1, 1)
+                current_batch = np.append(current_batch[:, 1:, :], new_val, axis=1)
+
+            forecast_rescaled = scaler.inverse_transform(np.array(forecast_scaled).reshape(-1, 1)).flatten()
+
+            last_real_value = float(data.iloc[-1])
+            forecast_final = np.insert(forecast_rescaled, 0, last_real_value)
+
+            return forecast_final, None
+
+        else:
+            return None, "Ne PyTorch ne de TensorFlow bulunamadı. Lütfen 'pip install torch' veya 'pip install tensorflow' ile yükleyin."
 
     except Exception as e:
         return None, str(e)
@@ -551,3 +637,10 @@ def ask_ai_about_pdf(pdf_text, question):
         return response['message']['content'], None
     except Exception as e:
         return None, str(e)
+
+
+# --- Notlar (README'ye veya uygulama arayüzüne ekleyin) ---
+# • Bu projede LSTM için öncelikli backend PyTorch olarak ayarlandı.
+# • Eğer PyTorch yüklü değilse, kod TensorFlow/Keras kullanımına geri döner (mevcut davranış korunur).
+# • PyTorch kurmak için: pip install torch (veya CUDA destekliyse uygun sürümü seçin).
+# • Kaynak: Eğer GPU üzerinde çalıştıracaksanız uygun CUDA sürümü ile torch kurmayı unutmayın.
