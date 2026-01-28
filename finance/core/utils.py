@@ -150,7 +150,7 @@ def piyasa_radari_tara(sembol_listesi, ui_names):
             # --- ÇİFT YÖNLÜ FİLTRELEME MANTIĞI ---
             # 1. Alım Fırsatları: Skor 3 ve üzeri
             # 2. Satış Riskleri: Skor 1 ve altı (Güçlü Sat sinyalleri)
-            if analiz['skor'] >= 3 or analiz['skor'] <= -1: 
+            if analiz['skor'] >= 2 or analiz['skor'] <= -2: 
                 sonuclar.append(analiz)
                 
         except Exception:
