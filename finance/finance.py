@@ -201,10 +201,10 @@ with tabs[0]:
 
     if not data.empty:
         # Teknik katmanları hesapla
-        analiz = utils.kapsamli_teknik_analiz(data)
-        aktif_trendler = utils.dinamik_trend_analizi(data)
-        fibo_levels = utils.calculate_fibonacci_levels(data) 
-        seviyeler = utils.tarihsel_seviye_analizi(data)
+        analiz = kapsamli_teknik_analiz(data)
+        aktif_trendler = dinamik_trend_analizi(data)
+        fibo_levels = calculate_fibonacci_levels(data) 
+        seviyeler = tarihsel_seviye_analizi(data)
 
         # --- DÜZEN: SOL GRAFİK (%85), SAĞ FİLTRE (%15) ---
         col_chart, col_filter = st.columns([5, 1])
@@ -320,7 +320,7 @@ with tabs[1]:
             st.subheader(p_adi)
             with st.spinner(f"{p_adi} taranıyor..."):
                 # Radarı çalıştırıyoruz
-                sonuclar = utils.piyasa_radari_tara(s_list, ui_names)
+                sonuclar = piyasa_radari_tara(s_list, ui_names)
                 
                 # Seçilen moda göre filtrele
                 if "AL" in islem_tipi:
