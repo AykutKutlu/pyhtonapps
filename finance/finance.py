@@ -1,5 +1,11 @@
-import utils
-import interface
+from core.utils import (
+    kapsamli_teknik_analiz,
+    piyasa_radari_tara,
+    calculate_fibonacci_levels,
+    dinamik_trend_analizi,
+    tarihsel_seviye_analizi
+)
+from core import interface
 import streamlit as st
 import pandas as pd
 import yfinance as yf
