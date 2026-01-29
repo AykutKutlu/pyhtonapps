@@ -276,3 +276,142 @@ def tarihsel_seviye_analizi(df):
         })
         
     return levels
+
+##########strateji motorları##########
+
+def osilatör_analizi(df):
+    """RSI, MFI gibi osilatörleri hesaplar."""
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return {'rsi': rsi.iloc[-1]}
+def hacim_profili_hesapla(df):
+    """Fiyat seviyelerine göre biriken hacmi (VAP) simüle eder."""
+    # Son 100 mumun kapanış verisini al
+    recent_data = df['Close'].tail(100)
+    
+    # 20 fiyat dilimi oluştur ve her dilime düşen mum sayısını hesapla
+    bins = pd.cut(recent_data, bins=20)
+    v_profile = bins.value_counts().sort_index()
+    
+    # HATA ÖNLEYİCİ: Sözlüğü manuel döngü ile kuruyoruz
+    cleaned_results = {}
+    for interval, count in v_profile.items():
+        # interval.mid fiyat seviyesini, count ise o seviyedeki yoğunluğu temsil eder
+        # count değerini açıkça standart Python int tipine çeviriyoruz
+        cleaned_results[float(interval.mid)] = int(count)
+        
+    return cleaned_results
+def gelismis_strateji_motoru(df):
+    """Trend, ATR stop/hedef ve R/R hesaplayan motor."""
+    # Verilerin sayısal olduğundan emin olalım
+    last_price = float(df['Close'].iloc[-1])
+    
+    # ATR (Average True Range) Hesaplaması
+    high_low = df['High'] - df['Low']
+    high_cp = np.abs(df['High'] - df['Close'].shift())
+    low_cp = np.abs(df['Low'] - df['Close'].shift())
+    tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
+    atr = float(tr.rolling(14).mean().iloc[-1])
+    
+    # SMA 50 ile Trend Belirleme
+    sma_50 = float(df['Close'].rolling(50).mean().iloc[-1])
+    trend = "BOĞA" if last_price > sma_50 else "AYI"
+    
+    # Çarpan (Hisse senedi için 2.0 - 2.5 idealdir)
+    mult = 2.5 
+    
+    if trend == "BOĞA":
+        signal = "BUY"
+        stop = last_price - (atr * mult)
+        hedef = last_price + (atr * mult * 2)
+    else:
+        signal = "SELL"
+        stop = last_price + (atr * mult)
+        hedef = last_price - (atr * mult * 2)
+        
+    # Sıfıra bölünme hatası korumalı R/R
+    risk = abs(last_price - stop)
+    reward = abs(hedef - last_price)
+    rr = round(reward / risk, 2) if risk > 0 else 0
+    
+    return {
+        'fiyat': last_price,
+        'gunluk_degisim': ((last_price / df['Close'].iloc[-2]) - 1) * 100,
+        'trend': trend,
+        'trend_skoru': int(min(max(rr * 20, 10), 95)),
+        'atr': atr,
+        'hedef': hedef,
+        'stop': stop,
+        'rr_orani': rr,
+        'last_signal': signal,
+        'signal_price': last_price,
+        'signal_date': df.index[-1]
+    }
+def coklu_strateji_analizi(df):
+    """5 Farklı stratejiyi tarayarak kurumsal bir konsensüs üretir."""
+    last_idx = -1
+    close = df['Close']
+    
+    # 1. RSI (Aşırı Alım/Satım)
+    delta = close.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    rsi = (100 - (100 / (1 + (gain / loss)))).iloc[last_idx]
+    s1 = "BUY" if rsi < 30 else "SELL" if rsi > 70 else "NEUTRAL"
+
+    # 2. MACD (Momentum)
+    exp1 = close.ewm(span=12, adjust=False).mean()
+    exp2 = close.ewm(span=26, adjust=False).mean()
+    macd = exp1 - exp2
+    sig_line = macd.ewm(span=9, adjust=False).mean()
+    s2 = "BUY" if macd.iloc[last_idx] > sig_line.iloc[last_idx] else "SELL"
+
+    # 3. Bollinger Bantları (Volatilite ve Kırılım)
+    sma20 = close.rolling(window=20).mean()
+    std20 = close.rolling(window=20).std()
+    upper_bb = sma20 + (std20 * 2)
+    lower_bb = sma20 - (std20 * 2)
+    # Alt banda dokunma AL, üst banda dokunma SAT sinyali
+    s3 = "BUY" if close.iloc[last_idx] <= lower_bb.iloc[last_idx] else "SELL" if close.iloc[last_idx] >= upper_bb.iloc[last_idx] else "NEUTRAL"
+
+    # 4. Hacim Patlaması (Volume Spike)
+    avg_vol = df['Volume'].rolling(20).mean()
+    last_vol = df['Volume'].iloc[last_idx]
+    # Hacim ortalamanın %50 üzerindeyse ve fiyat artıdaysa güçlü sinyal
+    is_up = close.iloc[last_idx] > close.iloc[-2]
+    s4 = "BUY" if (last_vol > avg_vol.iloc[last_idx] * 1.5 and is_up) else "SELL" if (last_vol > avg_vol.iloc[last_idx] * 1.5 and not is_up) else "NEUTRAL"
+
+    # 5. EMA Cross (Ana Trend)
+    ema20 = close.ewm(span=20, adjust=False).mean().iloc[last_idx]
+    ema50 = close.ewm(span=50, adjust=False).mean().iloc[last_idx]
+    s5 = "BUY" if ema20 > ema50 else "SELL"
+
+    # --- KONSENSÜS HESABI ---
+    signals = [s1, s2, s3, s4, s5]
+    buy_count = signals.count("BUY")
+    sell_count = signals.count("SELL")
+    
+    # Güven puanı (5 üzerinden normalize edilmiş % bazında)
+    score = (buy_count - sell_count)
+    conf = int((abs(score) / 5) * 100)
+    
+    if score >= 3: res = "STRONG BUY"
+    elif score >= 1: res = "BUY"
+    elif score <= -3: res = "STRONG SELL"
+    elif score <= -1: res = "SELL"
+    else: res = "NEUTRAL"
+
+    return {
+        "final_signal": res,
+        "guven": conf,
+        "detay": {
+            "RSI (Osilatör)": s1,
+            "MACD (Momentum)": s2,
+            "Bollinger (Volatilite)": s3,
+            "Hacim (Spike)": s4,
+            "EMA (Trend)": s5
+        }
+    }

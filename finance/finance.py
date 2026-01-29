@@ -3,7 +3,11 @@ from core.utils import (
     piyasa_radari_tara,
     calculate_fibonacci_levels,
     dinamik_trend_analizi,
-    tarihsel_seviye_analizi
+    tarihsel_seviye_analizi,
+    gelismis_strateji_motoru,
+    osilatör_analizi,
+    hacim_profili_hesapla,
+    coklu_strateji_analizi,
 )
 from core import interface
 import streamlit as st
@@ -13,6 +17,9 @@ import plotly.graph_objects as go
 
 from datetime import datetime
 import numpy as np
+import core.utils as utils
+import importlib
+importlib.reload(utils)
 
 def get_symbol_lists(market_type):
     """Piyasa türüne göre sembol listesini döner."""
@@ -179,7 +186,8 @@ if st.session_state.secilen_sembol != selected_symbol:
 
 tabs = st.tabs([
     "📈 Stratejik Teknik", 
-    "🎯 Yatırım Radarı"
+    "🎯 Yatırım Radarı",
+    "📊 Strateji",
 ])
 
 
@@ -370,3 +378,124 @@ with tabs[1]:
                                     st.caption(f"💡 Analiz Notu: {item.get('notlar', 'Veri yok.')}")
                 else:
                     st.info(f"{p_adi} piyasasında şu an seçilen kriterde bir durum görünmüyor.")
+
+
+with tabs[2]:
+    # --- VERİ YÖNETİMİ ---
+    if "chart_data" not in st.session_state or st.session_state.get("last_symbol") != selected_symbol:
+        raw_data = yf.download(selected_symbol, period="2y", interval="1d")
+        if isinstance(raw_data.columns, pd.MultiIndex):
+            raw_data.columns = raw_data.columns.get_level_values(0)
+        st.session_state["chart_data"] = raw_data
+        st.session_state["last_symbol"] = selected_symbol
+
+    data = st.session_state["chart_data"]
+
+    if not data.empty:
+        # Arka planda konsensüs hesapla
+        konsensus = coklu_strateji_analizi(data)
+        analiz = gelismis_strateji_motoru(data)
+        hacim_verisi = hacim_profili_hesapla(data)
+        
+        # --- ÜST DİNAMİK SİNYAL BARI ---
+        sig_color = "#00FF88" if "BUY" in konsensus['final_signal'] else "#FF3D00" if "SELL" in konsensus['final_signal'] else "#9E9E9E"
+        
+        st.markdown(f"## Genel Strateji Sinyali: <span style='color:{sig_color};'>{konsensus['final_signal']}</span>", unsafe_allow_html=True)
+        # --- ANA DÜZEN ---
+        col_main, col_ctrl = st.columns([4.2, 1])
+
+    with col_ctrl:
+        st.markdown("### ⚙️ Terminal Ayarları")
+        
+        # --- GÖRÜNÜM MODU ---
+        f_view = st.segmented_control(
+            "Grafik Tipi", 
+            options=["Mum", "Çizgi", "Alan"], 
+            default="Mum"
+        )
+        
+        st.divider()
+        
+        # --- TEKNİK KATMANLAR ---
+        st.markdown("**🔍 Teknik Katmanlar**")
+        f_overlay = st.multiselect(
+            "İndikatörleri Seç", 
+            ["Bollinger", "SMA 50/200", "EMA 20/50", "VWAP", "İçimoku"], 
+            default=["SMA 50/200", "Bollinger"]
+        )
+        
+        # --- STRATEJİ FİLTRELERİ (TOGGLE) ---
+        st.markdown("**🎯 Strateji Motoru**")
+        f_volume = st.toggle("Hacim Profili (VAP)", value=True, help="Fiyat seviyelerindeki hacim yoğunluğunu gösterir.")
+        f_targets = st.toggle("Dinamik Hedef/Stop", value=True, help="ATR bazlı kar al ve zarar kes bölgelerini çizer.")
+        f_signals = st.toggle("Sinyal Etiketleri", value=True, help="Grafik üzerinde AL/SAT oylarını gösterir.")
+        
+        st.divider()
+        
+        # --- STRATEJİ DETAYLARI (EXPANDER) ---
+        with st.expander("📊 Strateji Skor Detayları", expanded=True):
+            for s_name, s_val in konsensus['detay'].items():
+                color = "#00FF88" if s_val == "BUY" else "#FF3D00" if s_val == "SELL" else "#9E9E9E"
+                icon = "🔼" if s_val == "BUY" else "🔽" if s_val == "SELL" else "⏺️"
+                st.markdown(f"**{s_name}:** <span style='color:{color}'>{icon} {s_val}</span>", unsafe_allow_html=True)
+
+        # --- VERİ YENİLEME ---
+        st.divider()
+        if st.button("🔄 Terminali Refresh Et", use_container_width=True, type="primary"):
+            st.session_state.pop("chart_data", None)
+            st.rerun()
+
+        with col_main:
+            # Metrikler
+            m = st.columns(4)
+            m[0].metric("Anlık Fiyat", f"{analiz['fiyat']:.2f}")
+            m[1].metric("🎯 Hedef", f"{analiz['hedef']:.2f}")
+            m[2].metric("🛑 Stop", f"{analiz['stop']:.2f}", delta_color="inverse")
+            m[3].metric("⚖️ R/R Oranı", f"{analiz['rr_orani']}")
+
+            # Grafik
+            fig = go.Figure()
+            plot_data = data.tail(250)
+
+            # Candlestick
+            fig.add_trace(go.Candlestick(
+                x=plot_data.index, open=plot_data['Open'], high=plot_data['High'],
+                low=plot_data['Low'], close=plot_data['Close'], name="Fiyat"
+            ))
+
+            # Katmanlar
+            if "SMA 50/200" in f_overlay:
+                fig.add_trace(go.Scatter(x=plot_data.index, y=plot_data['Close'].rolling(50).mean(), line=dict(color='#FFD600', width=1.5), name="SMA 50"))
+                fig.add_trace(go.Scatter(x=plot_data.index, y=plot_data['Close'].rolling(200).mean(), line=dict(color='#E53935', width=2), name="SMA 200"))
+            if "Bollinger" in f_overlay:
+                sma20 = plot_data['Close'].rolling(window=20).mean()
+                std20 = plot_data['Close'].rolling(window=20).std()
+                upper = sma20 + (std20 * 2)
+                lower = sma20 - (std20 * 2)
+                
+                fig.add_trace(go.Scatter(x=plot_data.index, y=upper, line=dict(color='rgba(173, 216, 230, 0.4)', width=1), name="BB Üst"))
+                fig.add_trace(go.Scatter(x=plot_data.index, y=lower, line=dict(color='rgba(173, 216, 230, 0.4)', width=1), fill='tonexty', name="BB Alt"))
+
+            # Hacim Spike Belirteçleri
+            if konsensus['detay']['Hacim (Spike)'] != "NEUTRAL":
+                color = "#00FF88" if konsensus['detay']['Hacim (Spike)'] == "BUY" else "#FF3D00"
+                fig.add_annotation(
+                    x=plot_data.index[-1], y=plot_data['High'].iloc[-1],
+                    text="⚡ HACİM PATLAMASI", showarrow=True, arrowhead=2,
+                    font=dict(color=color, size=10), bgcolor="rgba(0,0,0,0.8)"
+                )
+            # Hacim Profili
+            if f_volume:
+                max_v = max(hacim_verisi.values()) if hacim_verisi else 1
+                for price, vol in hacim_verisi.items():
+                    width = (vol / max_v) * 40
+                    fig.add_shape(type="line", x0=plot_data.index[-int(width)], y0=price, x1=plot_data.index[-1], y1=price,
+                                 line=dict(color="rgba(0, 150, 255, 0.15)", width=5))
+
+            # Hedef/Stop Alanları
+            if f_targets:
+                rect_color = "rgba(0, 255, 136, 0.1)" if "BUY" in konsensus['final_signal'] else "rgba(255, 61, 0, 0.1)"
+                fig.add_hrect(y0=analiz['fiyat'], y1=analiz['hedef'], fillcolor=rect_color, line_width=0)
+
+            fig.update_layout(template="plotly_dark", height=700, margin=dict(l=10, r=10, t=10, b=10), yaxis=dict(side="right"))
+            st.plotly_chart(fig, use_container_width=True)
