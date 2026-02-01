@@ -133,33 +133,42 @@ def kapsamli_teknik_analiz(df):
         "notlar": ", ".join(analiz_notlari) if analiz_notlari else "Teyit bekleniyor",
         "df": df_tech
     }
-
 def piyasa_radari_tara(sembol_listesi, ui_names):
     sonuclar = []
     if not sembol_listesi: return []
 
     try:
-        # Emtialar için veri derinliğini 2y yapalım (SMA50/200 daha stabil hesaplanır)
         data_all = yf.download(sembol_listesi, period="2y", interval="1d", group_by='ticker', progress=False)
-    except: return []
+    except Exception as e:
+        print(f"Veri indirme hatası: {e}")
+        return []
     
     for symbol in sembol_listesi:
         try:
-            df = data_all[symbol].dropna() if len(sembol_listesi) > 1 else data_all.dropna()
+            if len(sembol_listesi) > 1:
+                df = data_all[symbol].dropna()
+            else:
+                df = data_all.dropna()
+            
             if len(df) < 50: continue
             
+            # --- ANALİZ MOTORUNU ÇALIŞTIR ---
             analiz = kapsamli_teknik_analiz(df)
+            
+            # Temel Bilgileri Ekle
             analiz['display_name'] = ui_names.get(symbol, symbol)
             analiz['symbol'] = symbol
             
-            # --- KRİTİK DEĞİŞİKLİK: FİLTREYİ GEVŞETELİM ---
-            # Eskiden >= 2 idi, şimdi >= 1 yapıyoruz ki Emtialar da sızabilsin.
-            # Ayrıca "HEDEF GÖRÜLDÜ" olanları her halükarda içeri alıyoruz.
-            if analiz['skor'] >= 1 or analiz['skor'] <= -1 or "HEDEF" in analiz['durum']:
-                sonuclar.append(analiz)
+            # --- KRİTİK DÜZELTME: FİLTREYİ KALDIRDIK ---
+            # Sinyal skoru 0 olsa bile (Nötr/Hedef/İzle), 
+            # hepsini listeye ekliyoruz ki UI tarafındaki sekmelerde ayıklayabilelim.
+            sonuclar.append(analiz)
                 
-        except: continue
+        except Exception as e:
+            print(f"{symbol} tarama hatası: {e}")
+            continue
             
+    # Sonuçları skora göre sırala (En güçlüler yine üstte kalsın)
     return sorted(sonuclar, key=lambda x: x['skor'], reverse=True)
 
 def calculate_fibonacci_levels(df):
