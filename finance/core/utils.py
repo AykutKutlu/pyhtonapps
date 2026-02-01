@@ -6,158 +6,160 @@ import warnings
 
 # Çirkin uyarıları gizlemek için (Opsiyonel)
 warnings.filterwarnings('ignore')
+import pandas as pd
+import numpy as np
+
 
 def kapsamli_teknik_analiz(df):
     """
-    720 günlük BUY/SELL sinyallerini tarar. 
-    Hedefi görülmüş sinyalleri eler ve en güncel aktif stratejiyi döner.
+    Doğrulama Mumlu Sniper Motoru. 
+    NameError ve KeyError hatalarına karşı tam korumalı.
     """
     if df is None or len(df) < 50:
         return {"durum": "VERİ YETERSİZ", "skor": 0, "fiyat": 0, "notlar": "Veri yetersiz."}
 
-    # --- 1. TEKNİK HESAPLAMALAR ---
     df_tech = df.copy()
     close_ser = df_tech['Close']
     
-    # ATR (Oynaklık)
-    high_low = df_tech['High'] - df_tech['Low']
-    high_close = np.abs(df_tech['High'] - df_tech['Close'].shift())
-    low_close = np.abs(df_tech['Low'] - df_tech['Close'].shift())
-    ranges = pd.concat([high_low, high_close, low_close], axis=1)
-    df_tech['ATR'] = np.max(ranges, axis=1).rolling(window=14).mean()
-    current_atr = df_tech['ATR'].iloc[-1]
+    # --- 1. GÖSTERGE HESAPLAMALARI ---
+    df_tech['SMA50'] = close_ser.rolling(50).mean()
+    df_tech['SMA200'] = close_ser.rolling(200).mean()
     
-    # RSI & Ortalamalar
+    # Bollinger Bantları
+    sma20 = close_ser.rolling(20).mean()
+    std20 = close_ser.rolling(20).std()
+    df_tech['Upper_BB'] = sma20 + (2.1 * std20)
+    df_tech['Lower_BB'] = sma20 - (2.1 * std20)
+
+    # MACD & RSI
+    exp1 = close_ser.ewm(span=12, adjust=False).mean()
+    exp2 = close_ser.ewm(span=26, adjust=False).mean()
+    df_tech['MACD'] = exp1 - exp2
+    df_tech['Signal_Line'] = df_tech['MACD'].ewm(span=9, adjust=False).mean()
+    
+    # RSI Hesaplama ve Sabitleme (Hatanın Çözümü Burada)
     delta = close_ser.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     df_tech['RSI'] = 100 - (100 / (1 + (gain / loss)))
-    rsi_val = df_tech['RSI'].iloc[-1]
-
-    df_tech['SMA20'] = close_ser.rolling(20).mean()
-    df_tech['SMA50'] = close_ser.rolling(50).mean()
-    df_tech['SMA200'] = close_ser.rolling(200).mean()
     
-    hacim_son = df_tech['Volume'].iloc[-1]
-    hacim_ort = df_tech['Volume'].tail(360).mean()
-    hacim_onayi = hacim_son > (hacim_ort * 1.5)
-
-    # --- 2. ÇİFT YÖNLÜ SİNYAL TARAMASI (720 GÜN) ---
+    # Değişkenleri en başta tanımlayalım ki NameError vermesin
+    current_price = float(close_ser.iloc[-1])
+    rsi_val = float(df_tech['RSI'].iloc[-1])
+    sma50_last = float(df_tech['SMA50'].iloc[-1])
+    
+    # ATR
+    tr = pd.concat([df_tech['High']-df_tech['Low'], 
+                    (df_tech['High']-close_ser.shift()).abs(), 
+                    (df_tech['Low']-close_ser.shift()).abs()], axis=1).max(axis=1)
+    df_tech['ATR'] = tr.rolling(window=14).mean()
+    current_atr = float(df_tech['ATR'].iloc[-1])
+    
+    # --- 2. 2-BAR TEYİTLİ SİNYAL ÜRETİMİ ---
     all_signals = []
-    scan_depth = min(len(df_tech), 720)
-    df_scan = df_tech.tail(scan_depth)
-    
-    for i in range(1, len(df_scan)):
-        c_close, p_close = df_scan['Close'].iloc[i], df_scan['Close'].iloc[i-1]
-        c_sma50, p_sma50 = df_scan['SMA50'].iloc[i], df_scan['SMA50'].iloc[i-1]
-        
-        if c_close > c_sma50 and p_close <= p_sma50:
-            all_signals.append({"type": "BUY", "date": df_scan.index[i], "price": float(c_close), "low": float(df_scan['Low'].iloc[i]), "high": float(df_scan['High'].iloc[i])})
-        elif c_close < c_sma50 and p_close >= p_sma50:
-            all_signals.append({"type": "SELL", "date": df_scan.index[i], "price": float(c_close), "low": float(df_scan['Low'].iloc[i]), "high": float(df_scan['High'].iloc[i])})
+    df_scan = df_tech.tail(720)
+    last_signal_index = -20 
 
-    # --- 3. EN GÜNCEL SİNYAL VE YÖN TAYİNİ ---
+    for i in range(20, len(df_scan)):
+        c_price, p_price, pp_price = df_scan['Close'].iloc[i], df_scan['Close'].iloc[i-1], df_scan['Close'].iloc[i-2]
+        c_sma, p_sma = df_scan['SMA50'].iloc[i], df_scan['SMA50'].iloc[i-1]
+        c_macd, c_sig = df_scan['MACD'].iloc[i], df_scan['Signal_Line'].iloc[i]
+
+        # 🟢 BUY TEYİDİ: 2 Bar kuralı + MACD Onayı
+        if (c_price > c_sma and p_price > p_sma) and (pp_price <= df_scan['SMA50'].iloc[i-2]) and (c_macd > c_sig):
+            if i - last_signal_index > 15:
+                all_signals.append({
+                    "type": "BUY", "price": float(c_price), "date": df_scan.index[i],
+                    "low": float(df_scan['Low'].iloc[i]), "high": float(df_scan['High'].iloc[i]),
+                    "match": True
+                })
+                last_signal_index = i
+
+        # 🔴 SELL TEYİDİ: 2 Bar kuralı + MACD Onayı
+        elif (c_price < c_sma and p_price < p_sma) and (pp_price >= df_scan['SMA50'].iloc[i-2]) and (c_macd < c_sig):
+            if i - last_signal_index > 15:
+                all_signals.append({
+                    "type": "SELL", "price": float(c_price), "date": df_scan.index[i],
+                    "low": float(df_scan['Low'].iloc[i]), "high": float(df_scan['High'].iloc[i]),
+                    "match": True
+                })
+                last_signal_index = i
+
+    # --- 3. DURUM TESPİTİ ---
     if all_signals:
         last_sig = all_signals[-1]
         s_type, signal_date, signal_price = last_sig['type'], last_sig['date'], last_sig['price']
         sig_low, sig_high = last_sig['low'], last_sig['high']
     else:
-        s_type, signal_date, signal_price = "NEUTRAL", df_tech.index[-1], float(close_ser.iloc[-1])
+        s_type, signal_date, signal_price = "NEUTRAL", df_tech.index[-1], current_price
         sig_low, sig_high = float(df_tech['Low'].iloc[-1]), float(df_tech['High'].iloc[-1])
 
-    # --- 4. STRATEJİK SEVİYELER ---
-    if s_type == "BUY":
-        en_guclu_alis = sig_low + (current_atr * 0.2)
-        stop_loss = sig_low - (current_atr * 1.5)
-        hedef_fiyat = signal_price + (current_atr * 4.5)
-    elif s_type == "SELL":
-        en_guclu_alis = sig_high - (current_atr * 0.2)
-        stop_loss = sig_high + (current_atr * 1.5)
-        hedef_fiyat = signal_price - (current_atr * 4.5)
-    else:
-        en_guclu_alis, stop_loss, hedef_fiyat = signal_price, signal_price * 0.95, signal_price * 1.05
-
-    # --- 5. HEDEF KONTROLÜ (FİLTRELEME) ---
-    current_price = float(close_ser.iloc[-1])
+    # Seviyeler
+    hedef_fiyat = signal_price + (current_atr * 4.5) if s_type == "BUY" else signal_price - (current_atr * 4.5)
+    stop_loss = sig_low - (current_atr * 1.5) if s_type == "BUY" else sig_high + (current_atr * 1.5)
+    
     sinyal_gecerli = True
-    analiz_notlari = []
+    if s_type == "BUY" and current_price >= hedef_fiyat: sinyal_gecerli = False
+    elif s_type == "SELL" and current_price <= hedef_fiyat: sinyal_gecerli = False
 
-    if s_type == "BUY" and current_price >= hedef_fiyat:
-        sinyal_gecerli = False
-        analiz_notlari.append("Hedef fiyat zaten geçildi.")
-    elif s_type == "SELL" and current_price <= hedef_fiyat:
-        sinyal_gecerli = False
-        analiz_notlari.append("Düşüş hedefi zaten görüldü.")
-
-    # --- 6. PUANLAMA VE SONUÇ ---
+    # Skorlama
     skor = 0
-    if 40 < rsi_val < 60: skor += 2; analiz_notlari.append("RSI İdeal")
-    if current_price > df_tech['SMA50'].iloc[-1]: skor += 1
-    if hacim_onayi: skor += 1; analiz_notlari.append("Hacim Onayı")
+    analiz_notlari = []
+    if sinyal_gecerli and s_type != "NEUTRAL":
+        if 40 < rsi_val < 60: skor += 1; analiz_notlari.append("RSI Dengeli")
+        if (s_type == "BUY" and current_price > sma50_last) or (s_type == "SELL" and current_price < sma50_last): 
+            skor += 1; analiz_notlari.append("Trend Onay")
+        if (df_tech['MACD'].iloc[-1] > df_tech['Signal_Line'].iloc[-1]): 
+            skor += 1; analiz_notlari.append("MACD Pozitif")
+        if df_tech['Volume'].iloc[-1] > (df_tech['Volume'].tail(20).mean() * 1.2): 
+            skor += 1; analiz_notlari.append("Hacim Onay")
 
-    if not sinyal_gecerli:
-        durum = "NÖTR / HEDEF GÖRÜLDÜ"
-        skor = 0
-    else:
-        durum = ("🚀 GÜÇLÜ " if skor >= 4 else "") + ("AL" if s_type == "BUY" else "SAT" if s_type == "SELL" else "İZLE")
+    durum = ("🔥 MATCH " if skor >= 3 else "") + (s_type if sinyal_gecerli else "NÖTR")
 
+    # --- 4. RETURN (Hatasız Yapı) ---
     return {
-        "fiyat": current_price, "rsi": rsi_val, "skor": skor, "durum": durum,
+        "fiyat": current_price, 
+        "rsi": rsi_val, 
+        "skor": skor, 
+        "durum": durum,
         "signal_type": s_type if sinyal_gecerli else "NEUTRAL",
-        "all_signals": all_signals, "signal_date": signal_date, "signal_price": signal_price,
-        "hedef": hedef_fiyat, "stop": stop_loss, "en_guclu_alis": en_guclu_alis,
+        "all_signals": all_signals, 
+        "signal_date": signal_date, 
+        "signal_price": signal_price,
+        "hedef": hedef_fiyat, 
+        "stop": stop_loss, 
+        "en_guclu_alis": sig_low if s_type == "BUY" else sig_high,
         "kazanc_beklentisi": abs(((hedef_fiyat / current_price) - 1) * 100) if sinyal_gecerli else 0,
-        "rr_oran": abs((hedef_fiyat - current_price) / (current_price - stop_loss)) if current_price != stop_loss else 0,
-        "notlar": ", ".join(analiz_notlari) if analiz_notlari else "Göstergeler stabil.",
+        "notlar": ", ".join(analiz_notlari) if analiz_notlari else "Teyit bekleniyor",
         "df": df_tech
     }
 
-
 def piyasa_radari_tara(sembol_listesi, ui_names):
-    """
-    Verilen listeyi tarar. Hem güçlü AL hem de güçlü SAT sinyallerini 
-    filtreleyerek analiz sonuçlarını döner.
-    """
     sonuclar = []
-    if not sembol_listesi:
-        return []
+    if not sembol_listesi: return []
 
-    # Veri indirme derinliği
     try:
-        # Progress bar'ı kapattık ki arkada temiz çalışsın
-        data_all = yf.download(sembol_listesi, period="1y", interval="1d", group_by='ticker', progress=False)
-    except Exception:
-        return []
+        # Emtialar için veri derinliğini 2y yapalım (SMA50/200 daha stabil hesaplanır)
+        data_all = yf.download(sembol_listesi, period="2y", interval="1d", group_by='ticker', progress=False)
+    except: return []
     
     for symbol in sembol_listesi:
         try:
-            # Multi-index veri kontrolü (Tek sembol vs Çok sembol durumu)
-            if len(sembol_listesi) > 1:
-                df = data_all[symbol].dropna()
-            else:
-                df = data_all.dropna()
-
-            if df.empty or len(df) < 50: # En az 50 mum (SMA200 için veri lazım olsa da 50 makul)
-                continue
+            df = data_all[symbol].dropna() if len(sembol_listesi) > 1 else data_all.dropna()
+            if len(df) < 50: continue
             
-            # Senin yazdığın o meşhur kapsamlı teknik analizi çalıştır
             analiz = kapsamli_teknik_analiz(df)
-            
-            # UI İsimlendirmesi
             analiz['display_name'] = ui_names.get(symbol, symbol)
             analiz['symbol'] = symbol
             
-            # --- ÇİFT YÖNLÜ FİLTRELEME MANTIĞI ---
-            # 1. Alım Fırsatları: Skor 3 ve üzeri
-            # 2. Satış Riskleri: Skor 1 ve altı (Güçlü Sat sinyalleri)
-            if analiz['skor'] >= 2 or analiz['skor'] <= -2: 
+            # --- KRİTİK DEĞİŞİKLİK: FİLTREYİ GEVŞETELİM ---
+            # Eskiden >= 2 idi, şimdi >= 1 yapıyoruz ki Emtialar da sızabilsin.
+            # Ayrıca "HEDEF GÖRÜLDÜ" olanları her halükarda içeri alıyoruz.
+            if analiz['skor'] >= 1 or analiz['skor'] <= -1 or "HEDEF" in analiz['durum']:
                 sonuclar.append(analiz)
                 
-        except Exception:
-            continue
+        except: continue
             
-    # Sıralama: Skorlara göre (4-5 başa, 0-1 sona)
-    # Bu sayede radarda en üstte en güçlü "AL"lar, en altta en güçlü "SAT"lar olur
     return sorted(sonuclar, key=lambda x: x['skor'], reverse=True)
 
 def calculate_fibonacci_levels(df):
@@ -351,67 +353,106 @@ def gelismis_strateji_motoru(df):
         'signal_date': df.index[-1]
     }
 def coklu_strateji_analizi(df):
-    """5 Farklı stratejiyi tarayarak kurumsal bir konsensüs üretir."""
-    last_idx = -1
-    close = df['Close']
-    
-    # 1. RSI (Aşırı Alım/Satım)
-    delta = close.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    rsi = (100 - (100 / (1 + (gain / loss)))).iloc[last_idx]
-    s1 = "BUY" if rsi < 30 else "SELL" if rsi > 70 else "NEUTRAL"
+    df = df.copy()
+    c, h, l, v = df['Close'], df['High'], df['Low'], df['Volume']
+    detay = {}
+    ind = {}
 
-    # 2. MACD (Momentum)
-    exp1 = close.ewm(span=12, adjust=False).mean()
-    exp2 = close.ewm(span=26, adjust=False).mean()
+    # --- Bollinger Bantları Hesaplaması ---
+    sma20 = c.rolling(20).mean()
+    std20 = c.rolling(20).std()
+    ind['u_bb'] = sma20 + (2 * std20) # Üst Bant
+    ind['l_bb'] = sma20 - (2 * std20) # Alt Bant (Hata buradaydı)
+    
+    # BB Stratejisi
+    detay['Bollinger Breakout'] = "BUY" if c.iloc[-1] > ind['u_bb'].iloc[-1] else "SELL" if c.iloc[-1] < ind['l_bb'].iloc[-1] else "NEUTRAL"
+
+    # 1. EMA Crossover (9/21)
+    ema9 = c.ewm(span=9).mean()
+    ema21 = c.ewm(span=21).mean()
+    detay['EMA Cross'] = "BUY" if ema9.iloc[-1] > ema21.iloc[-1] else "SELL"
+    ind['ema9'], ind['ema21'] = ema9, ema21
+
+    # 2. Donchian & 3. Turtle Trading (20 & 55 Günlük)
+    ind['u_donchian'] = h.rolling(20).max()
+    ind['l_donchian'] = l.rolling(20).min()
+    detay['Turtle/Donchian'] = "BUY" if c.iloc[-1] > ind['u_donchian'].iloc[-2] else "SELL" if c.iloc[-1] < ind['l_donchian'].iloc[-2] else "NEUTRAL"
+
+    # 4. ADX + Trend Direction
+    plus_dm = h.diff().clip(lower=0)
+    minus_dm = l.diff().clip(upper=0).abs()
+    tr = pd.concat([h-l, (h-c.shift()).abs(), (l-c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean()
+    plus_di = 100 * (plus_dm.rolling(14).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(14).mean() / atr)
+    detay['ADX Trend'] = "BUY" if plus_di.iloc[-1] > minus_di.iloc[-1] else "SELL"
+
+    # 5. RSI Filtered (Trend Onaylı)
+    rsi = 100 - (100 / (1 + (c.diff().clip(lower=0).rolling(14).mean() / c.diff().clip(upper=0).abs().rolling(14).mean())))
+    detay['RSI Filtered'] = "BUY" if rsi.iloc[-1] < 40 and c.iloc[-1] > ema21.iloc[-1] else "SELL" if rsi.iloc[-1] > 60 and c.iloc[-1] < ema21.iloc[-1] else "NEUTRAL"
+
+    # 6. MACD Cross (Trend Filtreli)
+    macd = c.ewm(span=12).mean() - c.ewm(span=26).mean()
+    macd_sig = macd.ewm(span=9).mean()
+    detay['MACD Trend'] = "BUY" if macd.iloc[-1] > macd_sig.iloc[-1] and c.iloc[-1] > ema21.iloc[-1] else "SELL"
+
+    # 7. Bollinger & 8. ATR Volatility Breakout
+    sma20 = c.rolling(20).mean()
+    std20 = c.rolling(20).std()
+    ind['u_bb'] = sma20 + (2 * std20)
+    detay['Volatility Break'] = "BUY" if c.iloc[-1] > ind['u_bb'].iloc[-1] and (tr.iloc[-1] > atr.iloc[-1] * 1.5) else "NEUTRAL"
+
+    # 9. Support-Resistance Break (Swing High/Low)
+    s_high = h.shift(1).rolling(20).max()
+    s_low = l.shift(1).rolling(20).min()
+    detay['S/R Breakout'] = "BUY" if c.iloc[-1] > s_high.iloc[-1] else "SELL" if c.iloc[-1] < s_low.iloc[-1] else "NEUTRAL"
+
+    # 10. VWAP (Reversion + Trend)
+    ind['vwap'] = (v * (h + l + c) / 3).cumsum() / v.cumsum()
+    detay['VWAP Strategy'] = "BUY" if c.iloc[-1] > ind['vwap'].iloc[-1] else "SELL"
+
+    # 11. Volume Breakout & 12. OBV Trend
+    obv = (np.sign(c.diff()) * v).fillna(0).cumsum()
+    detay['Volume/OBV'] = "BUY" if v.iloc[-1] > v.rolling(20).mean().iloc[-1] * 2 and obv.iloc[-1] > obv.rolling(10).mean().iloc[-1] else "NEUTRAL"
+
+    # 13. Z-Score Mean Reversion & 14. Pairs Trading Altyapısı
+    z_score = (c - sma20) / std20
+    detay['Z-Score/Pairs'] = "BUY" if z_score.iloc[-1] < -2.2 else "SELL" if z_score.iloc[-1] > 2.2 else "NEUTRAL"
+
+    # 15. Trend + Momentum & 16. Teknik + Volatilite Hibrit
+    detay['Hybrid Engine'] = "BUY" if (plus_di.iloc[-1] > 25 and rsi.iloc[-1] > 50) else "SELL" if (minus_di.iloc[-1] > 25 and rsi.iloc[-1] < 50) else "NEUTRAL"
+
+    buys = list(detay.values()).count("BUY")
+    sells = list(detay.values()).count("SELL")
+    final = "🚀 GÜÇLÜ AL" if buys > sells + 4 else "🔼 AL" if buys > sells else "🔽 SAT" if sells > buys else "⏺️ NÖTR"
+
+    return {"final_signal": final, "detay": detay, "indicators": ind}
+
+def hibrit_sinyal_motoru(df):
+    df = df.copy()
+    c, h, l = df['Close'], df['High'], df['Low']
+    
+    # --- 1. MACD HESAPLAMA ---
+    exp1 = c.ewm(span=12, adjust=False).mean()
+    exp2 = c.ewm(span=26, adjust=False).mean()
     macd = exp1 - exp2
-    sig_line = macd.ewm(span=9, adjust=False).mean()
-    s2 = "BUY" if macd.iloc[last_idx] > sig_line.iloc[last_idx] else "SELL"
-
-    # 3. Bollinger Bantları (Volatilite ve Kırılım)
-    sma20 = close.rolling(window=20).mean()
-    std20 = close.rolling(window=20).std()
-    upper_bb = sma20 + (std20 * 2)
-    lower_bb = sma20 - (std20 * 2)
-    # Alt banda dokunma AL, üst banda dokunma SAT sinyali
-    s3 = "BUY" if close.iloc[last_idx] <= lower_bb.iloc[last_idx] else "SELL" if close.iloc[last_idx] >= upper_bb.iloc[last_idx] else "NEUTRAL"
-
-    # 4. Hacim Patlaması (Volume Spike)
-    avg_vol = df['Volume'].rolling(20).mean()
-    last_vol = df['Volume'].iloc[last_idx]
-    # Hacim ortalamanın %50 üzerindeyse ve fiyat artıdaysa güçlü sinyal
-    is_up = close.iloc[last_idx] > close.iloc[-2]
-    s4 = "BUY" if (last_vol > avg_vol.iloc[last_idx] * 1.5 and is_up) else "SELL" if (last_vol > avg_vol.iloc[last_idx] * 1.5 and not is_up) else "NEUTRAL"
-
-    # 5. EMA Cross (Ana Trend)
-    ema20 = close.ewm(span=20, adjust=False).mean().iloc[last_idx]
-    ema50 = close.ewm(span=50, adjust=False).mean().iloc[last_idx]
-    s5 = "BUY" if ema20 > ema50 else "SELL"
-
-    # --- KONSENSÜS HESABI ---
-    signals = [s1, s2, s3, s4, s5]
-    buy_count = signals.count("BUY")
-    sell_count = signals.count("SELL")
+    signal_line = macd.ewm(span=9, adjust=False).mean()
     
-    # Güven puanı (5 üzerinden normalize edilmiş % bazında)
-    score = (buy_count - sell_count)
-    conf = int((abs(score) / 5) * 100)
+    # --- 2. TREND KIRILIMI (SMA20/50 Kesişimi veya Dinamik Kanal) ---
+    sma50 = c.rolling(50).mean()
     
-    if score >= 3: res = "STRONG BUY"
-    elif score >= 1: res = "BUY"
-    elif score <= -3: res = "STRONG SELL"
-    elif score <= -1: res = "SELL"
-    else: res = "NEUTRAL"
-
-    return {
-        "final_signal": res,
-        "guven": conf,
-        "detay": {
-            "RSI (Osilatör)": s1,
-            "MACD (Momentum)": s2,
-            "Bollinger (Volatilite)": s3,
-            "Hacim (Spike)": s4,
-            "EMA (Trend)": s5
-        }
-    }
+    sinyaller = []
+    
+    # Son 100 mumu tara (Okları çizmek için)
+    for i in range(len(df)-100, len(df)):
+        # AL KOŞULU: Fiyat SMA50 üstünde kapanacak VE MACD yukarı kesmiş olacak
+        if (c.iloc[i] > sma50.iloc[i]) and (macd.iloc[i] > signal_line.iloc[i]) and \
+           (c.iloc[i-1] <= sma50.iloc[i-1] or macd.iloc[i-1] <= signal_line.iloc[i-1]):
+            sinyaller.append({'date': df.index[i], 'price': l.iloc[i], 'type': 'BUY', 'label': '🚀 HİBRİT AL'})
+            
+        # SAT KOŞULU: Fiyat SMA50 altına inecek VE MACD aşağı kesmiş olacak
+        elif (c.iloc[i] < sma50.iloc[i]) and (macd.iloc[i] < signal_line.iloc[i]) and \
+             (c.iloc[i-1] >= sma50.iloc[i-1] or macd.iloc[i-1] >= signal_line.iloc[i-1]):
+            sinyaller.append({'date': df.index[i], 'price': h.iloc[i], 'type': 'SELL', 'label': '⚠️ HİBRİT SAT'})
+            
+    return sinyaller    
