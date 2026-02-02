@@ -165,7 +165,20 @@ if 'secilen_sembol' not in st.session_state:
 
 with st.sidebar:
     st.header("🎮 Terminal Kontrol")
-    market_type = st.selectbox("📊 Piyasa Seçiniz", ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)"])
+    
+    # Market type varsayılanları
+    market_options = ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)"]
+    market_idx = 0
+    
+    # Radardan piyasa seçimi varsa kullan
+    if st.session_state.get("selected_market_radar"):
+        market_idx = market_options.index(st.session_state.get("selected_market_radar"))
+    
+    market_type = st.selectbox("📊 Piyasa Seçiniz", market_options, index=market_idx)
+    
+    # Radar seçimi yapıldıysa state'i temizle
+    if st.session_state.get("selected_market_radar"):
+        st.session_state.selected_market_radar = None
     
     symbols = get_symbol_lists(market_type)
     ui_names = get_ui_names()
@@ -487,6 +500,9 @@ if selected_tab == "🎯 Yatırım Radarı":
                                 
                                 if st.button(f"🔍 {item['display_name']} Analizine Git", key=f"radar_btn_{item['symbol']}"):
                                     st.session_state.selected_symbol_radar = item['symbol']
+                                    # Piyasa türünü de kaydet
+                                    market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)"}
+                                    st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
                                     # Buton artık ana "Analiz Paneli" sekmesine yönlendiriyor.
                                     st.session_state.next_tab = "📈 Analiz Paneli"
                                     st.rerun()
