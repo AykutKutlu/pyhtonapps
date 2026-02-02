@@ -163,56 +163,81 @@ if 'strateji_yorumu' not in st.session_state:
 if 'secilen_sembol' not in st.session_state:
     st.session_state.secilen_sembol = None
 
+# ===== RADAR'DAN GELEN VERİLERİ ÖNCELİKLE İŞLE =====
+if st.session_state.get("selected_market_radar"):
+    st.session_state.current_market = st.session_state.selected_market_radar
+    st.session_state.market_selectbox = st.session_state.selected_market_radar
+    st.session_state.selected_market_radar = None
+
+if st.session_state.get("selected_symbol_radar"):
+    st.session_state.current_symbol = st.session_state.selected_symbol_radar
+    st.session_state.symbol_selectbox = st.session_state.selected_symbol_radar
+    st.session_state.selected_symbol_radar = None
+
 with st.sidebar:
     st.header("🎮 Terminal Kontrol")
     
     # Market type varsayılanları
     market_options = ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)"]
-    market_idx = 0
     
-    # Radardan piyasa seçimi varsa kullan
-    if st.session_state.get("selected_market_radar"):
-        market_idx = market_options.index(st.session_state.get("selected_market_radar"))
+    # ===== İLK KEZI İNCELE VE BAŞLAT =====
+    if "current_market" not in st.session_state:
+        st.session_state.current_market = market_options[0]
     
-    market_type = st.selectbox("📊 Piyasa Seçiniz", market_options, index=market_idx)
+    if "current_symbol" not in st.session_state:
+        st.session_state.current_symbol = get_symbol_lists(market_options[0])[0]
     
-    # Radar seçimi yapıldıysa state'i temizle
-    if st.session_state.get("selected_market_radar"):
-        st.session_state.selected_market_radar = None
+    # ===== SIDEBAR KONTROLLER =====
+    def on_market_change():
+        # Piyasa değişince sembolü sıfırla
+        new_market = st.session_state.market_selectbox
+        if new_market != st.session_state.current_market:
+            st.session_state.current_market = new_market
+            # Yeni piyasanın ilk sembolünü seç
+            st.session_state.current_symbol = get_symbol_lists(new_market)[0]
+            st.session_state.symbol_selectbox = st.session_state.current_symbol
     
-    symbols = get_symbol_lists(market_type)
+    market_type = st.selectbox(
+        "📊 Piyasa Seçiniz", 
+        market_options, 
+        index=market_options.index(st.session_state.current_market),
+        key="market_selectbox",
+        on_change=on_market_change
+    )
+    
+    symbols = get_symbol_lists(st.session_state.current_market)
     ui_names = get_ui_names()
-
-    # --- RADAR KÖPRÜSÜ ---
-    # Başlangıçta index 0 (varsayılan)
-    target_idx = 0 
     
-    # Radardan bir sembol gönderildi mi?
-    radar_selection = st.session_state.get("selected_symbol_radar")
+    # Sembol listesinde mevcut sembolü kontrol et
+    if st.session_state.current_symbol not in symbols:
+        st.session_state.current_symbol = symbols[0]
     
-    if radar_selection:
-        if radar_selection in symbols:
-            # Sembol mevcut listedeyse yerini bul
-            target_idx = symbols.index(radar_selection)
-        
-        # Seçim yapıldıktan sonra state'i temizle (manuel seçime izin ver)
-        st.session_state.selected_symbol_radar = None
+    # Session state'i selectbox key'i ile senkronize et
+    if "symbol_selectbox" not in st.session_state:
+        st.session_state.symbol_selectbox = st.session_state.current_symbol
+    
+    def on_symbol_change():
+        # Sembol seçimi değişince state'i güncelle
+        st.session_state.current_symbol = st.session_state.symbol_selectbox
 
-    # Artık 'index' parametresine 'target_idx' veriyoruz
     selected_symbol = st.selectbox(
         "📌 Sembol Seçiniz", 
         symbols, 
-        index=target_idx, 
+        index=symbols.index(st.session_state.symbol_selectbox) if st.session_state.symbol_selectbox in symbols else 0,
         format_func=lambda x: ui_names.get(x, x),
-        key="main_symbol_selector"
+        key="symbol_selectbox",
+        on_change=on_symbol_change
     )
 
-if st.session_state.secilen_sembol != selected_symbol:
+if 'secilen_sembol' not in st.session_state:
+    st.session_state.secilen_sembol = st.session_state.current_symbol
+
+if st.session_state.secilen_sembol != st.session_state.current_symbol:
     st.session_state.tahmin_sonucu = None
     st.session_state.tahmin_yorumu = None
     st.session_state.strateji_grafigi = None
     st.session_state.strateji_yorumu = None
-    st.session_state.secilen_sembol = selected_symbol
+    st.session_state.secilen_sembol = st.session_state.current_symbol
 
 # Ana sekmeleri yeniden düzenliyoruz.
 tab_names = ["📈 Analiz Paneli", "🎯 Yatırım Radarı"]
@@ -237,23 +262,119 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 # --- VERİ YÖNETİMİ (TÜM SEKMELER İÇİN ORTAK) ---
-if "chart_data" not in st.session_state or st.session_state.get("last_symbol") != selected_symbol:
-    raw_data = yf.download(selected_symbol, period="2y", interval="1d")
+if "chart_data" not in st.session_state or st.session_state.get("last_symbol") != st.session_state.current_symbol:
+    raw_data = yf.download(st.session_state.current_symbol, period="2y", interval="1d")
     if isinstance(raw_data.columns, pd.MultiIndex):
         raw_data.columns = raw_data.columns.get_level_values(0)
     st.session_state["chart_data"] = raw_data
-    st.session_state["last_symbol"] = selected_symbol
+    st.session_state["last_symbol"] = st.session_state.current_symbol
 
 data = st.session_state["chart_data"]
 
 
 if selected_tab == "📈 Analiz Paneli":
     
+    # Genel özet bilgileri hesapla
+    if not data.empty:
+        analiz_ozet = kapsamli_teknik_analiz(data)
+        konsensus_ozet = coklu_strateji_analizi(data)
+        
+        current_price = data.iloc[-1]['Close']
+        hedef_fiyat = analiz_ozet.get('hedef', 0)
+        rsi_deger = analiz_ozet['df'].iloc[-1]['RSI']
+        skor = konsensus_ozet.get('skor', 0)
+        
+        # Her subtab'ın sinyalini al
+        teknik_durum = analiz_ozet.get('durum', 'NÖTR')
+        strateji_durum = konsensus_ozet.get('final_signal', 'NÖTR')
+        
+        # Sinyalleri normalize et (AL/BUY, SAT/SELL olabilir)
+        teknik_sinyal = "BUY" if "AL" in teknik_durum or "BUY" in teknik_durum else "SELL" if "SAT" in teknik_durum or "SELL" in teknik_durum else "NEUTRAL"
+        strateji_sinyal = "BUY" if "AL" in strateji_durum or "BUY" in strateji_durum else "SELL" if "SAT" in strateji_durum or "SELL" in strateji_durum else "NEUTRAL"
+        
+        # Sinyaller uyuşmuyorsa uyarı ekle
+        sinyal_uyusmus = teknik_sinyal == strateji_sinyal
+        
+        # Renk seçimi
+        if sinyal_uyusmus:
+            durum_rengi = "#00FF88" if teknik_sinyal == "BUY" else "#FF3D00" if teknik_sinyal == "SELL" else "#FFD600"
+            durum_metni = f"{teknik_durum}"
+        else:
+            durum_rengi = "#FFA500"  # Turuncu - uyuşmazlık
+            durum_metni = f"⚠️ {teknik_durum} / {strateji_durum}"
+        
+        # Başlık
+        st.markdown(f"## 📊 {st.session_state.current_symbol} - Genel Durum Özeti")
+        
+        # Metrik kartları
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric(
+                label="📈 Güncel Fiyat",
+                value=f"{current_price:.2f}",
+                delta=None
+            )
+        
+        with col2:
+            fiyat_fark = hedef_fiyat - current_price
+            fiyat_yuzde = (fiyat_fark / current_price * 100) if current_price != 0 else 0
+            st.metric(
+                label="🎯 Hedef Fiyat",
+                value=f"{hedef_fiyat:.2f}",
+                delta=f"{fiyat_yuzde:+.1f}%"
+            )
+        
+        with col3:
+            st.metric(
+                label="📊 RSI",
+                value=f"{int(rsi_deger)}",
+                delta="Aşırı Alım" if rsi_deger > 70 else "Aşırı Satım" if rsi_deger < 30 else "Nötr"
+            )
+        
+        with col4:
+            st.metric(
+                label="⭐ Strateji Skoru",
+                value=f"{skor}/5",
+                delta=None
+            )
+        
+        with col5:
+            if sinyal_uyusmus:
+                st.markdown(f"""
+                <div style='
+                    text-align: center;
+                    padding: 20px;
+                    background-color: rgba(0, 0, 0, 0.3);
+                    border-radius: 8px;
+                    border-left: 4px solid {durum_rengi};
+                '>
+                    <div style='color: #888; font-size: 12px; margin-bottom: 8px;'>Mevcut Durum</div>
+                    <div style='color: {durum_rengi}; font-weight: bold; font-size: 16px;'>{durum_metni}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style='
+                    text-align: center;
+                    padding: 20px;
+                    background-color: rgba(0, 0, 0, 0.3);
+                    border-radius: 8px;
+                    border-left: 4px solid {durum_rengi};
+                '>
+                    <div style='color: #888; font-size: 11px; margin-bottom: 6px;'>Sinyaller Uyuşmuyor!</div>
+                    <div style='color: {durum_rengi}; font-weight: bold; font-size: 14px;'>{durum_metni}</div>
+                    <div style='color: #FFB74D; font-size: 10px; margin-top: 6px;'>Teknik ≠ Strateji</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.divider()
+    
     # "Analiz Paneli" altında iki alt sekme oluşturuyoruz.
     sub_tab_teknik, sub_tab_strateji = st.tabs(["Stratejik Teknik", "Strateji Laboratuvarı"])
 
     with sub_tab_teknik:
-        st.header(f"🔍 {selected_symbol} - Profesyonel Strateji Paneli")
+        st.header(f"🔍 {st.session_state.current_symbol} - Profesyonel Strateji Paneli")
         if not data.empty:
             # Teknik katmanları hesapla
             analiz = kapsamli_teknik_analiz(data)
@@ -376,7 +497,7 @@ if selected_tab == "📈 Analiz Paneli":
                 st.plotly_chart(fig, use_container_width=True)
 
     with sub_tab_strateji:
-        st.header(f"🏛️ {selected_symbol} - Strateji Laboratuvarı")
+        st.header(f"🏛️ {st.session_state.current_symbol} - Strateji Laboratuvarı")
         st.markdown("---")
         
         konsensus = coklu_strateji_analizi(data)
