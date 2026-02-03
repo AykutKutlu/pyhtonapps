@@ -215,31 +215,25 @@ with st.sidebar:
     market_options = ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)", "ABD Hisseleri"]
     market_idx = 0
     
-    # Radardan piyasa seçimi varsa kullan (selectbox'tan ÖNCE kontrol et)
+    # Radardan piyasa seçimi varsa kullan
     radar_market = st.session_state.get("selected_market_radar")
     if radar_market and radar_market in market_options:
         market_idx = market_options.index(radar_market)
+        # Radar'dan gelindi: tab'ı değiştir
+        st.session_state.active_tab = "📈 Analiz Paneli"
     
     market_type = st.selectbox("📊 Piyasa Seçiniz", market_options, index=market_idx)
-    
-    # Radar seçimi yapıldıysa state'i temizle (selectbox'tan SONRA)
-    if "selected_market_radar" in st.session_state:
-        del st.session_state["selected_market_radar"]
     
     symbols = get_symbol_lists(market_type)
     ui_names = get_ui_names()
 
     # --- RADAR KÖPRÜSÜ ---
-    # Başlangıçta index 0 (varsayılan)
     target_idx = 0 
-    
-    # Radardan bir sembol gönderildi mi?
     radar_symbol = st.session_state.get("selected_symbol_radar")
     
     if radar_symbol and radar_symbol in symbols:
         target_idx = symbols.index(radar_symbol)
     
-    # Artık 'index' parametresine 'target_idx' veriyoruz
     selected_symbol = st.selectbox(
         "📌 Sembol Seçiniz", 
         symbols, 
@@ -248,7 +242,9 @@ with st.sidebar:
         key="main_symbol_selector"
     )
     
-    # Seçim yapıldıktan sonra state'i temizle
+    # State temizle (bir sonraki rerun'da radar state'i kalmayacak)
+    if "selected_market_radar" in st.session_state:
+        del st.session_state["selected_market_radar"]
     if "selected_symbol_radar" in st.session_state:
         del st.session_state["selected_symbol_radar"]
 
@@ -263,11 +259,6 @@ if st.session_state.secilen_sembol != selected_symbol:
 tab_names = ["📈 Analiz Paneli", "🎯 Yatırım Radarı"]
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = tab_names[0]
-
-# HATA DÜZELTMESİ: Butondan gelen sekme değiştirme isteğini burada işliyoruz.
-if 'next_tab' in st.session_state:
-    st.session_state.active_tab = st.session_state.next_tab
-    del st.session_state.next_tab 
 
 selected_tab = st.radio(
     "Sekmeler", 
@@ -598,16 +589,12 @@ if selected_tab == "🎯 Yatırım Radarı":
 
                                 st.markdown(f"**💡 Analiz:** {item['notlar']}")
                                 
-                                # Buton basıldığında state ayarla ve tab'a git
+                                # Buton basıldığında radar state'lerini set et
                                 if st.button(f"🔍 {item['display_name']} Analizine Git", key=f"radar_btn_{item['symbol']}_{p_adi}"):
                                     st.session_state.selected_symbol_radar = item['symbol']
                                     market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)", "🇺🇸 ABD Hisseleri": "ABD Hisseleri"}
                                     st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
-                                    st.session_state.next_tab = "📈 Analiz Paneli"
-                                    try:
-                                        st.rerun()
-                                    except:
-                                        pass
+                                    st.rerun()
             else:
                 st.caption(f"🔍 {p_adi} kategorisinde bu filtreye uygun sonuç yok.")
     else:
