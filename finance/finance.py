@@ -11,6 +11,15 @@ from core.utils import (
     hibrit_sinyal_motoru
 )
 from core import interface
+from core.constants import (
+    SELECTED_TAB_KEY, SWITCH_TO_TAB_KEY,
+    SELECTED_SYMBOL_RADAR_KEY, SELECTED_MARKET_RADAR_KEY,
+    TAHMIN_SONUCU_KEY, TAHMIN_YORUMU_KEY, STRATEJI_GRAFIGI_KEY, STRATEJI_YORUMU_KEY, SECILEN_SEMBOL_KEY,
+    CHART_DATA_KEY, LAST_SYMBOL_KEY, RADAR_CACHE_KEY,
+    TAB_ANALIZ_PANELI, TAB_YATIRIM_RADARI, TAB_NAMES,
+    MARKET_BIST100, MARKET_KRIPTO, MARKET_EMTIA, MARKET_USA, MARKET_OPTIONS,
+    RADAR_MARKET_MAP
+)
 import streamlit as st
 import pandas as pd
 import yfinance as yf
@@ -197,37 +206,35 @@ st.set_page_config(page_title="Finansal Analiz Pro", layout="wide")
 interface.apply_custom_css()
 st.title("📈 Hisse & Kripto Tahminleme ve Stratejiler")
 
-if 'tahmin_sonucu' not in st.session_state:
-    st.session_state.tahmin_sonucu = None
-if 'tahmin_yorumu' not in st.session_state:
-    st.session_state.tahmin_yorumu = None
-if 'strateji_grafigi' not in st.session_state:
-    st.session_state.strateji_grafigi = None
-if 'strateji_yorumu' not in st.session_state:
-    st.session_state.strateji_yorumu = None
-if 'secilen_sembol' not in st.session_state:
-    st.session_state.secilen_sembol = None
+if TAHMIN_SONUCU_KEY not in st.session_state:
+    st.session_state[TAHMIN_SONUCU_KEY] = None
+if TAHMIN_YORUMU_KEY not in st.session_state:
+    st.session_state[TAHMIN_YORUMU_KEY] = None
+if STRATEJI_GRAFIGI_KEY not in st.session_state:
+    st.session_state[STRATEJI_GRAFIGI_KEY] = None
+if STRATEJI_YORUMU_KEY not in st.session_state:
+    st.session_state[STRATEJI_YORUMU_KEY] = None
+if SECILEN_SEMBOL_KEY not in st.session_state:
+    st.session_state[SECILEN_SEMBOL_KEY] = None
 
 with st.sidebar:
     st.header("🎮 Terminal Kontrol")
     
-    # Market type varsayılanları
-    market_options = ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)", "ABD Hisseleri"]
     market_idx = 0
     
     # Radardan piyasa seçimi varsa kullan (yalnızca ilk rerun'da)
-    radar_market = st.session_state.get("selected_market_radar")
-    if radar_market and radar_market in market_options:
-        market_idx = market_options.index(radar_market)
+    radar_market = st.session_state.get(SELECTED_MARKET_RADAR_KEY)
+    if radar_market and radar_market in MARKET_OPTIONS:
+        market_idx = MARKET_OPTIONS.index(radar_market)
     
-    market_type = st.selectbox("📊 Piyasa Seçiniz", market_options, index=market_idx)
+    market_type = st.selectbox("📊 Piyasa Seçiniz", MARKET_OPTIONS, index=market_idx)
     
     symbols = get_symbol_lists(market_type)
     ui_names = get_ui_names()
 
     # --- RADAR KÖPRÜSÜ ---
     target_idx = 0 
-    radar_symbol = st.session_state.get("selected_symbol_radar")
+    radar_symbol = st.session_state.get(SELECTED_SYMBOL_RADAR_KEY)
     
     if radar_symbol and radar_symbol in symbols:
         target_idx = symbols.index(radar_symbol)
@@ -241,35 +248,33 @@ with st.sidebar:
     )
     
     # Radar state'lerini temizle (bir sonraki rerun'da radar state'i kalmayacak)
-    if "selected_market_radar" in st.session_state:
-        del st.session_state["selected_market_radar"]
-    if "selected_symbol_radar" in st.session_state:
-        del st.session_state["selected_symbol_radar"]
+    if SELECTED_MARKET_RADAR_KEY in st.session_state:
+        del st.session_state[SELECTED_MARKET_RADAR_KEY]
+    if SELECTED_SYMBOL_RADAR_KEY in st.session_state:
+        del st.session_state[SELECTED_SYMBOL_RADAR_KEY]
     
     # === SIDEBAR SON ADIM: TAB GEÇİŞİ KONTROLÜ ===
     # Button'dan gelen flag kontrolü - radio widget render'INDAN ÖNCESİ (sidebar'ın sonunda)
-    if st.session_state.get("_switch_to_tab"):
-        st.session_state.selected_tab = st.session_state._switch_to_tab
-        del st.session_state._switch_to_tab
+    if st.session_state.get(SWITCH_TO_TAB_KEY):
+        st.session_state[SELECTED_TAB_KEY] = st.session_state[SWITCH_TO_TAB_KEY]
+        del st.session_state[SWITCH_TO_TAB_KEY]
 
 # --- SIDEBAR DÖNDÜKTENSONRAbi ---
 
-if st.session_state.secilen_sembol != selected_symbol:
-    st.session_state.tahmin_sonucu = None
-    st.session_state.tahmin_yorumu = None
-    st.session_state.strateji_grafigi = None
-    st.session_state.strateji_yorumu = None
-    st.session_state.secilen_sembol = selected_symbol
+if st.session_state[SECILEN_SEMBOL_KEY] != selected_symbol:
+    st.session_state[TAHMIN_SONUCU_KEY] = None
+    st.session_state[TAHMIN_YORUMU_KEY] = None
+    st.session_state[STRATEJI_GRAFIGI_KEY] = None
+    st.session_state[STRATEJI_YORUMU_KEY] = None
+    st.session_state[SECILEN_SEMBOL_KEY] = selected_symbol
 
 # Ana sekmeleri yeniden düzenliyoruz.
-tab_names = ["📈 Analiz Paneli", "🎯 Yatırım Radarı"]
-
 selected_tab = st.radio(
     "Sekmeler", 
-    tab_names, 
+    TAB_NAMES, 
     horizontal=True, 
     label_visibility="collapsed",
-    key="selected_tab"
+    key=SELECTED_TAB_KEY
 )
 
 
@@ -277,17 +282,17 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 # --- VERİ YÖNETİMİ (TÜM SEKMELER İÇİN ORTAK) ---
-if "chart_data" not in st.session_state or st.session_state.get("last_symbol") != selected_symbol:
+if CHART_DATA_KEY not in st.session_state or st.session_state.get(LAST_SYMBOL_KEY) != selected_symbol:
     raw_data = yf.download(selected_symbol, period="2y", interval="1d")
     if isinstance(raw_data.columns, pd.MultiIndex):
         raw_data.columns = raw_data.columns.get_level_values(0)
-    st.session_state["chart_data"] = raw_data
-    st.session_state["last_symbol"] = selected_symbol
+    st.session_state[CHART_DATA_KEY] = raw_data
+    st.session_state[LAST_SYMBOL_KEY] = selected_symbol
 
-data = st.session_state["chart_data"]
+data = st.session_state[CHART_DATA_KEY]
 
 
-if selected_tab == "📈 Analiz Paneli":
+if selected_tab == TAB_ANALIZ_PANELI:
     
     # --- GÜNCEL BİLGİLER BAŞLIĞI ---
     if not data.empty:
@@ -537,13 +542,12 @@ if selected_tab == "📈 Analiz Paneli":
             fig_strat.update_layout(template="plotly_dark", height=850, xaxis_rangeslider_visible=False, margin=dict(l=0, r=0, t=10, b=0), yaxis=dict(side="right", showgrid=False), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
             st.plotly_chart(fig_strat, use_container_width=True)
 
-
-if selected_tab == "🎯 Yatırım Radarı":
+if selected_tab == TAB_YATIRIM_RADARI:
     st.header("🎯 Profesyonel Yatırım Radarı")
     st.markdown("---")
     
-    if "radar_cache" not in st.session_state:
-        st.session_state.radar_cache = None
+    if RADAR_CACHE_KEY not in st.session_state:
+        st.session_state[RADAR_CACHE_KEY] = None
 
     mod = st.radio("Görünüm Filtresi:", ["🚀 Yükseliş Fırsatları", "🚨 Düşüş Riskleri", "✅ Hedef / Nötr"], horizontal=True)
 
@@ -551,17 +555,17 @@ if selected_tab == "🎯 Yatırım Radarı":
         with st.spinner("Piyasalar derinlemesine analiz ediliyor..."):
             ui_names = get_ui_names()
             piyasalar = {
-                "🇹🇷 BIST 100": get_symbol_lists("BIST 100"),
-                "₿ Kripto": get_symbol_lists("Kripto Paralar"),
-                "🏗️ Emtia": get_symbol_lists("Emtialar (Maden/Enerji)"),
-                "🇺🇸 ABD Hisseleri": get_symbol_lists("ABD Hisseleri")
+                "🇹🇷 BIST 100": get_symbol_lists(MARKET_BIST100),
+                "₿ Kripto": get_symbol_lists(MARKET_KRIPTO),
+                "🏗️ Emtia": get_symbol_lists(MARKET_EMTIA),
+                "🇺🇸 ABD Hisseleri": get_symbol_lists(MARKET_USA)
             }
             taramalar = {p_adi: piyasa_radari_tara(s_list, ui_names) for p_adi, s_list in piyasalar.items()}
-            st.session_state.radar_cache = taramalar
+            st.session_state[RADAR_CACHE_KEY] = taramalar
             st.rerun()
 
-    if st.session_state.radar_cache is not None:
-        for p_adi, veriler in st.session_state.radar_cache.items():
+    if st.session_state[RADAR_CACHE_KEY] is not None:
+        for p_adi, veriler in st.session_state[RADAR_CACHE_KEY].items():
             if "Yükseliş" in mod:
                 onayli, v_color = [v for v in veriler if ("AL" in v['durum'] or "BUY" in v['durum']) and not v.get('hedefe_vardi', False)], "#00FF88"
             elif "Düşüş" in mod:
@@ -595,10 +599,9 @@ if selected_tab == "🎯 Yatırım Radarı":
                                 
                                 # Buton basıldığında radar state'lerini set et
                                 if st.button(f"🔍 {item['display_name']} Analizine Git", key=f"radar_btn_{item['symbol']}_{p_adi}"):
-                                    st.session_state.selected_symbol_radar = item['symbol']
-                                    market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)", "🇺🇸 ABD Hisseleri": "ABD Hisseleri"}
-                                    st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
-                                    st.session_state._switch_to_tab = "📈 Analiz Paneli"
+                                    st.session_state[SELECTED_SYMBOL_RADAR_KEY] = item['symbol']
+                                    st.session_state[SELECTED_MARKET_RADAR_KEY] = RADAR_MARKET_MAP.get(p_adi, p_adi)
+                                    st.session_state[SWITCH_TO_TAB_KEY] = TAB_ANALIZ_PANELI
                                     st.rerun()
             else:
                 st.caption(f"🔍 {p_adi} kategorisinde bu filtreye uygun sonuç yok.")
