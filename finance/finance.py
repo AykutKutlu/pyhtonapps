@@ -37,7 +37,7 @@ def get_symbol_lists(market_type):
             "YEOTK.IS", "BINHO1000.IS", "KARSN.IS", "TMSN.IS", "SKBNK.IS", "FENER.IS", "CANTE.IS", "TUKAS.IS", "KTLEV.IS", "ADEL.IS", 
             "BERA.IS", "ODAS.IS", "AKFGY.IS", "GOLTS.IS", "ARDYZ.IS", "BJKAS.IS", "PEKGY.IS", "PAPIL.IS", "LMKDC.IS", "ALTNY.IS", 
             "NTHOL.IS", "TRKCM.IS", "AYGAZ.IS", "TGSAS.IS", "BAGFS.IS", "ISDMR.IS", "KERVN.IS", "LOGO.IS", "NIBAS.IS", "PRKME.IS", 
-            "SNGYO.IS", "TSPOR.IS", "ULUFA.IS", "VAKKO.IS", "YATAS.IS", "FORTE.IS"
+            "SNGYO.IS", "TSPOR.IS", "ULUFA.IS", "VAKKO.IS", "YATAS.IS", "FORTE.IS", "SARKY.IS"
         ]
     elif market_type == "Kripto Paralar":
         return [
@@ -51,6 +51,23 @@ def get_symbol_lists(market_type):
             "GC=F", "SI=F", "HG=F", "PL=F", "PA=F", # Madenler
             "CL=F", "NG=F", "RB=F", "HO=F",         # Enerji
             "ZC=F", "ZS=F", "KE=F", "KC=F", "CT=F"  # Tarım
+        ]
+    elif market_type == "ABD Hisseleri":
+        return [
+            "AAPL","MSFT","NVDA","GOOGL","GOOG","AMZN","META","TSLA","BRK-B",
+            "JPM","V","MA","JNJ","UNH","XOM","CVX","WMT","PG","AVGO","COST",
+            "HD","KO","PEP","ABBV","LLY","MRK","PFE","TMO","DHR","ABT",
+            "NFLX","INTC","AMD","QCOM","ADBE","CRM","ORCL","IBM","CSCO",
+            "BAC","GS","MS","C","WFC","BLK","SCHW","AXP",
+            "DIS","NKE","MCD","SBUX","LOW","TGT","BKNG","MAR",
+            "BA","GE","CAT","DE","HON","RTX","LMT","GD",
+            "UBER","LYFT","PYPL","SQ","SHOP",
+            "PLTR","SNOW","NOW","DDOG","CRWD","ZS","OKTA","MDB",
+            "TSM","ASML","ARM","TXN","MU","AMAT","LRCX","KLAC",
+            "ENPH","SEDG","FSLR",
+            "CVNA","RIVN","LCID",
+            "COIN","MSTR",
+            "ROKU","SPOT","PINS","SNAP"
         ]
     return []
     
@@ -122,7 +139,34 @@ def get_ui_names():
         "GOLTS.IS": "Göltaş Çimento", "ARDYZ.IS": "Ardyz Yazılım", "BJKAS.IS": "Beşiktaş JK",
         "PEKGY.IS": "Peker GYO", "PAPIL.IS": "Papilon Savunma", "LMKDC.IS": "Limak Doğu Anadolu Çimento",
         "ALTNY.IS": "Altınay Savunma", "NTHOL.IS": "Net Holding", "AYGAZ.IS": "Aygaz",
-        "LOGO.IS": "Logo Yazılım", "SNGYO.IS": "Sinpaş GYO", "VAKKO.IS": "Vakko", "YATAS.IS": "Yataş", "FORTE.IS": "Forte bilişim"
+        "LOGO.IS": "Logo Yazılım", "SNGYO.IS": "Sinpaş GYO", "VAKKO.IS": "Vakko", "YATAS.IS": "Yataş", "FORTE.IS": "Forte bilişim",
+        "SARKY.IS": "Sarkuysan",
+        #ABD Piyasaları
+        "AAPL":"Apple","MSFT":"Microsoft","NVDA":"NVIDIA","GOOGL":"Alphabet A","GOOG":"Alphabet C",
+        "AMZN":"Amazon","META":"Meta Platforms","TSLA":"Tesla","BRK-B":"Berkshire Hathaway",
+        "JPM":"JPMorgan Chase","V":"Visa","MA":"Mastercard","JNJ":"Johnson & Johnson",
+        "UNH":"UnitedHealth","XOM":"Exxon Mobil","CVX":"Chevron","WMT":"Walmart","PG":"Procter & Gamble",
+        "AVGO":"Broadcom","COST":"Costco","HD":"Home Depot","KO":"Coca-Cola","PEP":"PepsiCo",
+        "ABBV":"AbbVie","LLY":"Eli Lilly","MRK":"Merck","PFE":"Pfizer","TMO":"Thermo Fisher",
+        "DHR":"Danaher","ABT":"Abbott Laboratories",
+        "NFLX":"Netflix","INTC":"Intel","AMD":"AMD","QCOM":"Qualcomm","ADBE":"Adobe",
+        "CRM":"Salesforce","ORCL":"Oracle","IBM":"IBM","CSCO":"Cisco",
+        "BAC":"Bank of America","GS":"Goldman Sachs","MS":"Morgan Stanley","C":"Citigroup",
+        "WFC":"Wells Fargo","BLK":"BlackRock","SCHW":"Charles Schwab","AXP":"American Express",
+        "DIS":"Walt Disney","NKE":"Nike","MCD":"McDonald's","SBUX":"Starbucks",
+        "LOW":"Lowe's","TGT":"Target","BKNG":"Booking Holdings","MAR":"Marriott",
+        "BA":"Boeing","GE":"General Electric","CAT":"Caterpillar","DE":"Deere",
+        "HON":"Honeywell","RTX":"RTX","LMT":"Lockheed Martin","GD":"General Dynamics",
+        "UBER":"Uber","LYFT":"Lyft","PYPL":"PayPal","SQ":"Block","SHOP":"Shopify",
+        "PLTR":"Palantir","SNOW":"Snowflake","NOW":"ServiceNow","DDOG":"Datadog",
+        "CRWD":"CrowdStrike","ZS":"Zscaler","OKTA":"Okta","MDB":"MongoDB",
+        "TSM":"TSMC","ASML":"ASML","ARM":"Arm Holdings","TXN":"Texas Instruments",
+        "MU":"Micron","AMAT":"Applied Materials","LRCX":"Lam Research","KLAC":"KLA",
+        "ENPH":"Enphase Energy","SEDG":"SolarEdge","FSLR":"First Solar",
+        "CVNA":"Carvana","RIVN":"Rivian","LCID":"Lucid Motors",
+        "COIN":"Coinbase","MSTR":"MicroStrategy",
+        "ROKU":"Roku","SPOT":"Spotify","PINS":"Pinterest","SNAP":"Snap"
+
     }  
 @st.cache_data
 def load_data(symbol, start_date="2020-01-01"):
@@ -163,81 +207,56 @@ if 'strateji_yorumu' not in st.session_state:
 if 'secilen_sembol' not in st.session_state:
     st.session_state.secilen_sembol = None
 
-# ===== RADAR'DAN GELEN VERİLERİ ÖNCELİKLE İŞLE =====
-if st.session_state.get("selected_market_radar"):
-    st.session_state.current_market = st.session_state.selected_market_radar
-    st.session_state.market_selectbox = st.session_state.selected_market_radar
-    st.session_state.selected_market_radar = None
-
-if st.session_state.get("selected_symbol_radar"):
-    st.session_state.current_symbol = st.session_state.selected_symbol_radar
-    st.session_state.symbol_selectbox = st.session_state.selected_symbol_radar
-    st.session_state.selected_symbol_radar = None
-
 with st.sidebar:
     st.header("🎮 Terminal Kontrol")
     
     # Market type varsayılanları
-    market_options = ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)"]
+    market_options = ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)", "ABD Hisseleri"]
+    market_idx = 0
     
-    # ===== İLK KEZI İNCELE VE BAŞLAT =====
-    if "current_market" not in st.session_state:
-        st.session_state.current_market = market_options[0]
+    # Radardan piyasa seçimi varsa kullan
+    if st.session_state.get("selected_market_radar"):
+        market_idx = market_options.index(st.session_state.get("selected_market_radar"))
     
-    if "current_symbol" not in st.session_state:
-        st.session_state.current_symbol = get_symbol_lists(market_options[0])[0]
+    market_type = st.selectbox("📊 Piyasa Seçiniz", market_options, index=market_idx)
     
-    # ===== SIDEBAR KONTROLLER =====
-    def on_market_change():
-        # Piyasa değişince sembolü sıfırla
-        new_market = st.session_state.market_selectbox
-        if new_market != st.session_state.current_market:
-            st.session_state.current_market = new_market
-            # Yeni piyasanın ilk sembolünü seç
-            st.session_state.current_symbol = get_symbol_lists(new_market)[0]
-            st.session_state.symbol_selectbox = st.session_state.current_symbol
+    # Radar seçimi yapıldıysa state'i temizle
+    if st.session_state.get("selected_market_radar"):
+        st.session_state.selected_market_radar = None
     
-    market_type = st.selectbox(
-        "📊 Piyasa Seçiniz", 
-        market_options, 
-        index=market_options.index(st.session_state.current_market),
-        key="market_selectbox",
-        on_change=on_market_change
-    )
-    
-    symbols = get_symbol_lists(st.session_state.current_market)
+    symbols = get_symbol_lists(market_type)
     ui_names = get_ui_names()
-    
-    # Sembol listesinde mevcut sembolü kontrol et
-    if st.session_state.current_symbol not in symbols:
-        st.session_state.current_symbol = symbols[0]
-    
-    # Session state'i selectbox key'i ile senkronize et
-    if "symbol_selectbox" not in st.session_state:
-        st.session_state.symbol_selectbox = st.session_state.current_symbol
-    
-    def on_symbol_change():
-        # Sembol seçimi değişince state'i güncelle
-        st.session_state.current_symbol = st.session_state.symbol_selectbox
 
+    # --- RADAR KÖPRÜSÜ ---
+    # Başlangıçta index 0 (varsayılan)
+    target_idx = 0 
+    
+    # Radardan bir sembol gönderildi mi?
+    radar_selection = st.session_state.get("selected_symbol_radar")
+    
+    if radar_selection:
+        if radar_selection in symbols:
+            # Sembol mevcut listedeyse yerini bul
+            target_idx = symbols.index(radar_selection)
+        
+        # Seçim yapıldıktan sonra state'i temizle (manuel seçime izin ver)
+        st.session_state.selected_symbol_radar = None
+
+    # Artık 'index' parametresine 'target_idx' veriyoruz
     selected_symbol = st.selectbox(
         "📌 Sembol Seçiniz", 
         symbols, 
-        index=symbols.index(st.session_state.symbol_selectbox) if st.session_state.symbol_selectbox in symbols else 0,
+        index=target_idx, 
         format_func=lambda x: ui_names.get(x, x),
-        key="symbol_selectbox",
-        on_change=on_symbol_change
+        key="main_symbol_selector"
     )
 
-if 'secilen_sembol' not in st.session_state:
-    st.session_state.secilen_sembol = st.session_state.current_symbol
-
-if st.session_state.secilen_sembol != st.session_state.current_symbol:
+if st.session_state.secilen_sembol != selected_symbol:
     st.session_state.tahmin_sonucu = None
     st.session_state.tahmin_yorumu = None
     st.session_state.strateji_grafigi = None
     st.session_state.strateji_yorumu = None
-    st.session_state.secilen_sembol = st.session_state.current_symbol
+    st.session_state.secilen_sembol = selected_symbol
 
 # Ana sekmeleri yeniden düzenliyoruz.
 tab_names = ["📈 Analiz Paneli", "🎯 Yatırım Radarı"]
@@ -262,119 +281,77 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 # --- VERİ YÖNETİMİ (TÜM SEKMELER İÇİN ORTAK) ---
-if "chart_data" not in st.session_state or st.session_state.get("last_symbol") != st.session_state.current_symbol:
-    raw_data = yf.download(st.session_state.current_symbol, period="2y", interval="1d")
+if "chart_data" not in st.session_state or st.session_state.get("last_symbol") != selected_symbol:
+    raw_data = yf.download(selected_symbol, period="2y", interval="1d")
     if isinstance(raw_data.columns, pd.MultiIndex):
         raw_data.columns = raw_data.columns.get_level_values(0)
     st.session_state["chart_data"] = raw_data
-    st.session_state["last_symbol"] = st.session_state.current_symbol
+    st.session_state["last_symbol"] = selected_symbol
 
 data = st.session_state["chart_data"]
 
 
 if selected_tab == "📈 Analiz Paneli":
     
-    # Genel özet bilgileri hesapla
+    # --- GÜNCEL BİLGİLER BAŞLIĞI ---
     if not data.empty:
-        analiz_ozet = kapsamli_teknik_analiz(data)
-        konsensus_ozet = coklu_strateji_analizi(data)
+        analiz = kapsamli_teknik_analiz(data)
+        konsensus = coklu_strateji_analizi(data)
         
-        current_price = data.iloc[-1]['Close']
-        hedef_fiyat = analiz_ozet.get('hedef', 0)
-        rsi_deger = analiz_ozet['df'].iloc[-1]['RSI']
-        skor = konsensus_ozet.get('skor', 0)
+        current_price = data['Close'].iloc[-1]
+        target_price = analiz.get('hedef', current_price)
+        current_rsi = analiz['df']['RSI'].iloc[-1] if 'RSI' in analiz['df'].columns else 0
+        skor = analiz.get('skor', 0)
+        durum_teknik = analiz.get('durum', 'NÖTR')
+        signal_type_teknik = analiz.get('signal_type', 'NEUTRAL')
         
-        # Her subtab'ın sinyalini al
-        teknik_durum = analiz_ozet.get('durum', 'NÖTR')
-        strateji_durum = konsensus_ozet.get('final_signal', 'NÖTR')
+        # Strateji analizi durumu
+        durum_strateji = konsensus['final_signal'].replace('AL', 'AL').replace('SAT', 'SAT').replace('NÖTR', 'NÖTR')
+        signal_type_strateji = "BUY" if "AL" in durum_strateji else "SELL" if "SAT" in durum_strateji else "NEUTRAL"
         
-        # Sinyalleri normalize et (AL/BUY, SAT/SELL olabilir)
-        teknik_sinyal = "BUY" if "AL" in teknik_durum or "BUY" in teknik_durum else "SELL" if "SAT" in teknik_durum or "SELL" in teknik_durum else "NEUTRAL"
-        strateji_sinyal = "BUY" if "AL" in strateji_durum or "BUY" in strateji_durum else "SELL" if "SAT" in strateji_durum or "SELL" in strateji_durum else "NEUTRAL"
+        # Durumlar uyuşup uyuşmadığını kontrol et
+        durumlar_ayni = signal_type_teknik == signal_type_strateji
         
-        # Sinyaller uyuşmuyorsa uyarı ekle
-        sinyal_uyusmus = teknik_sinyal == strateji_sinyal
-        
-        # Renk seçimi
-        if sinyal_uyusmus:
-            durum_rengi = "#00FF88" if teknik_sinyal == "BUY" else "#FF3D00" if teknik_sinyal == "SELL" else "#FFD600"
-            durum_metni = f"{teknik_durum}"
+        # Gösterilecek durum metni
+        if durumlar_ayni:
+            durum_display = durum_teknik
+            durum_rengi = "#00FF88" if signal_type_teknik == "BUY" else "#FF3D00" if signal_type_teknik == "SELL" else "#FFD600"
         else:
-            durum_rengi = "#FFA500"  # Turuncu - uyuşmazlık
-            durum_metni = f"⚠️ {teknik_durum} / {strateji_durum}"
+            durum_display = f"⚠️ Teknik: {durum_teknik} | Strateji: {durum_strateji}"
+            durum_rengi = "#FF9800"  # Uyuşmama durumunda turuncu
         
-        # Başlık
-        st.markdown(f"## 📊 {st.session_state.current_symbol} - Genel Durum Özeti")
-        
-        # Metrik kartları
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        with col1:
-            st.metric(
-                label="📈 Güncel Fiyat",
-                value=f"{current_price:.2f}",
-                delta=None
-            )
-        
-        with col2:
-            fiyat_fark = hedef_fiyat - current_price
-            fiyat_yuzde = (fiyat_fark / current_price * 100) if current_price != 0 else 0
-            st.metric(
-                label="🎯 Hedef Fiyat",
-                value=f"{hedef_fiyat:.2f}",
-                delta=f"{fiyat_yuzde:+.1f}%"
-            )
-        
-        with col3:
-            st.metric(
-                label="📊 RSI",
-                value=f"{int(rsi_deger)}",
-                delta="Aşırı Alım" if rsi_deger > 70 else "Aşırı Satım" if rsi_deger < 30 else "Nötr"
-            )
-        
-        with col4:
-            st.metric(
-                label="⭐ Strateji Skoru",
-                value=f"{skor}/5",
-                delta=None
-            )
-        
-        with col5:
-            if sinyal_uyusmus:
-                st.markdown(f"""
-                <div style='
-                    text-align: center;
-                    padding: 20px;
-                    background-color: rgba(0, 0, 0, 0.3);
-                    border-radius: 8px;
-                    border-left: 4px solid {durum_rengi};
-                '>
-                    <div style='color: #888; font-size: 12px; margin-bottom: 8px;'>Mevcut Durum</div>
-                    <div style='color: {durum_rengi}; font-weight: bold; font-size: 16px;'>{durum_metni}</div>
+        st.markdown(f"""
+        <div style='background: rgba(0,0,0,0.3); padding: 20px; border-radius: 8px; margin-bottom: 20px;'>
+            <div style='display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;'>
+                <div style='text-align: center;'>
+                    <p style='color: #9E9E9E; margin: 0; font-size: 12px;'>📊 Güncel Fiyat</p>
+                    <p style='color: #00FF88; margin: 5px 0 0 0; font-size: 18px; font-weight: bold;'>{current_price:.2f}</p>
                 </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div style='
-                    text-align: center;
-                    padding: 20px;
-                    background-color: rgba(0, 0, 0, 0.3);
-                    border-radius: 8px;
-                    border-left: 4px solid {durum_rengi};
-                '>
-                    <div style='color: #888; font-size: 11px; margin-bottom: 6px;'>Sinyaller Uyuşmuyor!</div>
-                    <div style='color: {durum_rengi}; font-weight: bold; font-size: 14px;'>{durum_metni}</div>
-                    <div style='color: #FFB74D; font-size: 10px; margin-top: 6px;'>Teknik ≠ Strateji</div>
+                <div style='text-align: center;'>
+                    <p style='color: #9E9E9E; margin: 0; font-size: 12px;'>🎯 Hedef Fiyat</p>
+                    <p style='color: #FFD600; margin: 5px 0 0 0; font-size: 18px; font-weight: bold;'>{target_price:.2f}</p>
                 </div>
-                """, unsafe_allow_html=True)
-        
-        st.divider()
+                <div style='text-align: center;'>
+                    <p style='color: #9E9E9E; margin: 0; font-size: 12px;'>📈 RSI</p>
+                    <p style='color: #B388FF; margin: 5px 0 0 0; font-size: 18px; font-weight: bold;'>{int(current_rsi)}</p>
+                </div>
+                <div style='text-align: center;'>
+                    <p style='color: #9E9E9E; margin: 0; font-size: 12px;'>⭐ Skor</p>
+                    <p style='color: #FF6B9D; margin: 5px 0 0 0; font-size: 18px; font-weight: bold;'>{skor}/5</p>
+                </div>
+                <div style='text-align: center;'>
+                    <p style='color: #9E9E9E; margin: 0; font-size: 12px;'>💬 Durum</p>
+                    <p style='color: {durum_rengi}; margin: 5px 0 0 0; font-size: 18px; font-weight: bold;'>{durum_display}</p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     # "Analiz Paneli" altında iki alt sekme oluşturuyoruz.
     sub_tab_teknik, sub_tab_strateji = st.tabs(["Stratejik Teknik", "Strateji Laboratuvarı"])
 
     with sub_tab_teknik:
-        st.header(f"🔍 {st.session_state.current_symbol} - Profesyonel Strateji Paneli")
+        st.header(f"🔍 {selected_symbol} - Profesyonel Strateji Paneli")
         if not data.empty:
             # Teknik katmanları hesapla
             analiz = kapsamli_teknik_analiz(data)
@@ -497,7 +474,7 @@ if selected_tab == "📈 Analiz Paneli":
                 st.plotly_chart(fig, use_container_width=True)
 
     with sub_tab_strateji:
-        st.header(f"🏛️ {st.session_state.current_symbol} - Strateji Laboratuvarı")
+        st.header(f"🏛️ {selected_symbol} - Strateji Laboratuvarı")
         st.markdown("---")
         
         konsensus = coklu_strateji_analizi(data)
@@ -580,7 +557,8 @@ if selected_tab == "🎯 Yatırım Radarı":
             piyasalar = {
                 "🇹🇷 BIST 100": get_symbol_lists("BIST 100"),
                 "₿ Kripto": get_symbol_lists("Kripto Paralar"),
-                "🏗️ Emtia": get_symbol_lists("Emtialar (Maden/Enerji)")
+                "🏗️ Emtia": get_symbol_lists("Emtialar (Maden/Enerji)"),
+                "🇺🇸 ABD Hisseleri": get_symbol_lists("ABD Hisseleri")
             }
             taramalar = {p_adi: piyasa_radari_tara(s_list, ui_names) for p_adi, s_list in piyasalar.items()}
             st.session_state.radar_cache = taramalar
@@ -622,7 +600,7 @@ if selected_tab == "🎯 Yatırım Radarı":
                                 if st.button(f"🔍 {item['display_name']} Analizine Git", key=f"radar_btn_{item['symbol']}"):
                                     st.session_state.selected_symbol_radar = item['symbol']
                                     # Piyasa türünü de kaydet
-                                    market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)"}
+                                    market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)", "🇺🇸 ABD Hisseleri": "ABD Hisseleri"}
                                     st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
                                     # Buton artık ana "Analiz Paneli" sekmesine yönlendiriyor.
                                     st.session_state.next_tab = "📈 Analiz Paneli"

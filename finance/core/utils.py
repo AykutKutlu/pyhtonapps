@@ -105,14 +105,37 @@ def kapsamli_teknik_analiz(df):
     # Skorlama
     skor = 0
     analiz_notlari = []
-    if sinyal_gecerli and s_type != "NEUTRAL":
-        if 40 < rsi_val < 60: skor += 1; analiz_notlari.append("RSI Dengeli")
-        if (s_type == "BUY" and current_price > sma50_last) or (s_type == "SELL" and current_price < sma50_last): 
-            skor += 1; analiz_notlari.append("Trend Onay")
-        if (df_tech['MACD'].iloc[-1] > df_tech['Signal_Line'].iloc[-1]): 
-            skor += 1; analiz_notlari.append("MACD Pozitif")
+    
+    if s_type != "NEUTRAL":
+        # RSI kontrolü
+        if 30 < rsi_val < 70: 
+            skor += 1
+            analiz_notlari.append("RSI Dengeli")
+        elif rsi_val < 30:
+            if s_type == "BUY": skor += 1; analiz_notlari.append("RSI Aşırı Satıldı")
+        elif rsi_val > 70:
+            if s_type == "SELL": skor += 1; analiz_notlari.append("RSI Aşırı Satıldı")
+        
+        # Fiyat SMA50 kontrolü
+        if (s_type == "BUY" and current_price > sma50_last): 
+            skor += 1
+            analiz_notlari.append("Fiyat SMA50 Üstünde")
+        elif (s_type == "SELL" and current_price < sma50_last): 
+            skor += 1
+            analiz_notlari.append("Fiyat SMA50 Altında")
+        
+        # MACD kontrolü
+        if (s_type == "BUY" and df_tech['MACD'].iloc[-1] > df_tech['Signal_Line'].iloc[-1]): 
+            skor += 1
+            analiz_notlari.append("MACD Pozitif")
+        elif (s_type == "SELL" and df_tech['MACD'].iloc[-1] < df_tech['Signal_Line'].iloc[-1]): 
+            skor += 1
+            analiz_notlari.append("MACD Negatif")
+        
+        # Hacim kontrolü
         if df_tech['Volume'].iloc[-1] > (df_tech['Volume'].tail(20).mean() * 1.2): 
-            skor += 1; analiz_notlari.append("Hacim Onay")
+            skor += 1
+            analiz_notlari.append("Hacim Güçlü")
 
     durum = ("🔥 MATCH " if skor >= 3 else "") + (s_type if sinyal_gecerli else "NÖTR")
 
