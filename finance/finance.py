@@ -216,12 +216,15 @@ with st.sidebar:
     market_idx = 0
     
     # Radardan piyasa seçimi varsa kullan (selectbox'tan ÖNCE kontrol et)
-    if st.session_state.get("selected_market_radar"):
-        market_idx = market_options.index(st.session_state.get("selected_market_radar"))
-        # Hemen temizle ki selectbox normal akışına devam etsin
-        del st.session_state["selected_market_radar"]
+    radar_market = st.session_state.get("selected_market_radar")
+    if radar_market and radar_market in market_options:
+        market_idx = market_options.index(radar_market)
     
     market_type = st.selectbox("📊 Piyasa Seçiniz", market_options, index=market_idx)
+    
+    # Radar seçimi yapıldıysa state'i temizle (selectbox'tan SONRA)
+    if "selected_market_radar" in st.session_state:
+        del st.session_state["selected_market_radar"]
     
     symbols = get_symbol_lists(market_type)
     ui_names = get_ui_names()
@@ -231,16 +234,11 @@ with st.sidebar:
     target_idx = 0 
     
     # Radardan bir sembol gönderildi mi?
-    radar_selection = st.session_state.get("selected_symbol_radar")
+    radar_symbol = st.session_state.get("selected_symbol_radar")
     
-    if radar_selection:
-        if radar_selection in symbols:
-            # Sembol mevcut listedeyse yerini bul
-            target_idx = symbols.index(radar_selection)
-        
-        # Seçim yapıldıktan sonra state'i temizle (manuel seçime izin ver)
-        del st.session_state["selected_symbol_radar"]
-
+    if radar_symbol and radar_symbol in symbols:
+        target_idx = symbols.index(radar_symbol)
+    
     # Artık 'index' parametresine 'target_idx' veriyoruz
     selected_symbol = st.selectbox(
         "📌 Sembol Seçiniz", 
@@ -249,6 +247,10 @@ with st.sidebar:
         format_func=lambda x: ui_names.get(x, x),
         key="main_symbol_selector"
     )
+    
+    # Seçim yapıldıktan sonra state'i temizle
+    if "selected_symbol_radar" in st.session_state:
+        del st.session_state["selected_symbol_radar"]
 
 if st.session_state.secilen_sembol != selected_symbol:
     st.session_state.tahmin_sonucu = None
@@ -602,7 +604,10 @@ if selected_tab == "🎯 Yatırım Radarı":
                                     market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)", "🇺🇸 ABD Hisseleri": "ABD Hisseleri"}
                                     st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
                                     st.session_state.next_tab = "📈 Analiz Paneli"
-                                    st.rerun()
+                                    try:
+                                        st.rerun()
+                                    except:
+                                        pass
             else:
                 st.caption(f"🔍 {p_adi} kategorisinde bu filtreye uygun sonuç yok.")
     else:
