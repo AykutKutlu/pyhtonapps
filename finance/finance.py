@@ -23,17 +23,6 @@ import importlib
 importlib.reload(utils)
 
 
-def _radar_go_to_analysis(symbol, p_adi):
-    """Callback for radar card buttons: set selection and switch tab."""
-    market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)", "🇺🇸 ABD Hisseleri": "ABD Hisseleri"}
-    st.session_state.selected_symbol_radar = symbol
-    st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
-    st.session_state.next_tab = "📈 Analiz Paneli"
-    try:
-        st.experimental_rerun()
-    except Exception:
-        pass
-
 def get_symbol_lists(market_type):
     """Piyasa türüne göre sembol listesini döner."""
     if market_type == "BIST 100":
@@ -609,11 +598,13 @@ if selected_tab == "🎯 Yatırım Radarı":
 
                                 st.markdown(f"**💡 Analiz:** {item['notlar']}")
                                 
-                                # Use on_click callback to avoid issues inside loops/containers
-                                btn_key = f"radar_btn_{item['symbol']}_{p_adi}"
-                                if st.button(f"🔍 {item['display_name']} Analizine Git", key=btn_key, on_click=_radar_go_to_analysis, args=(item['symbol'], p_adi)):
-                                    # callback handles state and rerun
-                                    pass
+                                # Buton basıldığında state ayarla ve tab'a git
+                                if st.button(f"🔍 {item['display_name']} Analizine Git", key=f"radar_btn_{item['symbol']}_{p_adi}"):
+                                    st.session_state.selected_symbol_radar = item['symbol']
+                                    market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)", "🇺🇸 ABD Hisseleri": "ABD Hisseleri"}
+                                    st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
+                                    st.session_state.next_tab = "📈 Analiz Paneli"
+                                    st.rerun()
             else:
                 st.caption(f"🔍 {p_adi} kategorisinde bu filtreye uygun sonuç yok.")
     else:
