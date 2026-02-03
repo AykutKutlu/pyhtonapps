@@ -215,15 +215,13 @@ with st.sidebar:
     market_options = ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)", "ABD Hisseleri"]
     market_idx = 0
     
-    # Radardan piyasa seçimi varsa kullan
+    # Radardan piyasa seçimi varsa kullan (selectbox'tan ÖNCE kontrol et)
     if st.session_state.get("selected_market_radar"):
         market_idx = market_options.index(st.session_state.get("selected_market_radar"))
+        # Hemen temizle ki selectbox normal akışına devam etsin
+        del st.session_state["selected_market_radar"]
     
     market_type = st.selectbox("📊 Piyasa Seçiniz", market_options, index=market_idx)
-    
-    # Radar seçimi yapıldıysa state'i temizle
-    if st.session_state.get("selected_market_radar"):
-        st.session_state.selected_market_radar = None
     
     symbols = get_symbol_lists(market_type)
     ui_names = get_ui_names()
@@ -241,7 +239,7 @@ with st.sidebar:
             target_idx = symbols.index(radar_selection)
         
         # Seçim yapıldıktan sonra state'i temizle (manuel seçime izin ver)
-        st.session_state.selected_symbol_radar = None
+        del st.session_state["selected_symbol_radar"]
 
     # Artık 'index' parametresine 'target_idx' veriyoruz
     selected_symbol = st.selectbox(
