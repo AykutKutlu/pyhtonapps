@@ -245,6 +245,14 @@ with st.sidebar:
         del st.session_state["selected_market_radar"]
     if "selected_symbol_radar" in st.session_state:
         del st.session_state["selected_symbol_radar"]
+    
+    # === SIDEBAR SON ADIM: TAB GEÇİŞİ KONTROLÜ ===
+    # Button'dan gelen flag kontrolü - radio widget render'INDAN ÖNCESİ (sidebar'ın sonunda)
+    if st.session_state.get("_switch_to_tab"):
+        st.session_state.selected_tab = st.session_state._switch_to_tab
+        del st.session_state._switch_to_tab
+
+# --- SIDEBAR DÖNDÜKTENSONRAbi ---
 
 if st.session_state.secilen_sembol != selected_symbol:
     st.session_state.tahmin_sonucu = None
@@ -252,11 +260,6 @@ if st.session_state.secilen_sembol != selected_symbol:
     st.session_state.strateji_grafigi = None
     st.session_state.strateji_yorumu = None
     st.session_state.secilen_sembol = selected_symbol
-
-# === RADIO WIDGET RENDER'INDAN ÖNCE PENDING STATE'I UYGULA ===
-if st.session_state.get("_pending_tab_change"):
-    st.session_state.selected_tab = st.session_state._pending_tab_change
-    del st.session_state._pending_tab_change
 
 # Ana sekmeleri yeniden düzenliyoruz.
 tab_names = ["📈 Analiz Paneli", "🎯 Yatırım Radarı"]
@@ -595,7 +598,7 @@ if selected_tab == "🎯 Yatırım Radarı":
                                     st.session_state.selected_symbol_radar = item['symbol']
                                     market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)", "🇺🇸 ABD Hisseleri": "ABD Hisseleri"}
                                     st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
-                                    st.session_state._pending_tab_change = "📈 Analiz Paneli"
+                                    st.session_state._switch_to_tab = "📈 Analiz Paneli"
                                     st.rerun()
             else:
                 st.caption(f"🔍 {p_adi} kategorisinde bu filtreye uygun sonuç yok.")
