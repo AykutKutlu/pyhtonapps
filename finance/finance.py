@@ -215,12 +215,10 @@ with st.sidebar:
     market_options = ["BIST 100", "Kripto Paralar", "Emtialar (Maden/Enerji)", "ABD Hisseleri"]
     market_idx = 0
     
-    # Radardan piyasa seçimi varsa kullan
+    # Radardan piyasa seçimi varsa kullan (yalnızca ilk rerun'da)
     radar_market = st.session_state.get("selected_market_radar")
     if radar_market and radar_market in market_options:
         market_idx = market_options.index(radar_market)
-        # Radar'dan gelindi: tab'ı değiştir
-        st.session_state.active_tab = "📈 Analiz Paneli"
     
     market_type = st.selectbox("📊 Piyasa Seçiniz", market_options, index=market_idx)
     
@@ -242,7 +240,7 @@ with st.sidebar:
         key="main_symbol_selector"
     )
     
-    # State temizle (bir sonraki rerun'da radar state'i kalmayacak)
+    # Radar state'lerini temizle (bir sonraki rerun'da radar state'i kalmayacak)
     if "selected_market_radar" in st.session_state:
         del st.session_state["selected_market_radar"]
     if "selected_symbol_radar" in st.session_state:
@@ -255,17 +253,20 @@ if st.session_state.secilen_sembol != selected_symbol:
     st.session_state.strateji_yorumu = None
     st.session_state.secilen_sembol = selected_symbol
 
+# === RADIO WIDGET RENDER'INDAN ÖNCE PENDING STATE'I UYGULA ===
+if st.session_state.get("_pending_tab_change"):
+    st.session_state.selected_tab = st.session_state._pending_tab_change
+    del st.session_state._pending_tab_change
+
 # Ana sekmeleri yeniden düzenliyoruz.
 tab_names = ["📈 Analiz Paneli", "🎯 Yatırım Radarı"]
-if 'active_tab' not in st.session_state:
-    st.session_state.active_tab = tab_names[0]
 
 selected_tab = st.radio(
     "Sekmeler", 
     tab_names, 
-    key="active_tab", 
     horizontal=True, 
-    label_visibility="collapsed"
+    label_visibility="collapsed",
+    key="selected_tab"
 )
 
 
@@ -594,6 +595,7 @@ if selected_tab == "🎯 Yatırım Radarı":
                                     st.session_state.selected_symbol_radar = item['symbol']
                                     market_map = {"🇹🇷 BIST 100": "BIST 100", "₿ Kripto": "Kripto Paralar", "🏗️ Emtia": "Emtialar (Maden/Enerji)", "🇺🇸 ABD Hisseleri": "ABD Hisseleri"}
                                     st.session_state.selected_market_radar = market_map.get(p_adi, p_adi)
+                                    st.session_state._pending_tab_change = "📈 Analiz Paneli"
                                     st.rerun()
             else:
                 st.caption(f"🔍 {p_adi} kategorisinde bu filtreye uygun sonuç yok.")
