@@ -2,7 +2,7 @@
 MEB (Minimum Expenditure Basket) Calculation Tool
 Streamlit web application for calculating Minimum Expenditure Basket based on TUIK indices
 """
-
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -89,10 +89,26 @@ def calculate_meb(tuik_data, selected_option):
         enf_rates['Date'] = date_range
 
         # 2. Baz Fiyat Dosyalarını Yükleme (Aralık 2025)
-        base_file = "./MEB_TR.xlsx" if selected_option == "Turkish" else "./MEB_SSN.xlsx"
-        base_prices_df = pd.read_excel(base_file)
-        base_prices_df.columns = [str(c).strip() for c in base_prices_df.columns]
-        base_date = datetime(2025, 12, 1)
+        if selected_option == "Turkish":
+            base_file = "MEB_TR.xlsx"
+        else:
+            base_file = "MEB_SSN.xlsx"
+
+        # Dosyanın varlığını kontrol et ve dinamik yol oluştur
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(current_dir, base_file)
+
+        if not os.path.exists(full_path):
+            st.error(f"❌ Dosya bulunamadı: {base_file}. Lütfen GitHub'da dosya adının doğruluğunu (Büyük/Küçük harf dahil) kontrol et.")
+            st.info(f"Klasördeki mevcut dosyalar: {os.listdir(current_dir)}")
+        else:
+            try:
+                base_prices_df = pd.read_excel(full_path)
+                base_prices_df.columns = [str(c).strip() for c in base_prices_df.columns]
+                base_date = datetime(2025, 12, 1)
+                st.success(f"✅ {base_file} başarıyla yüklendi.")
+            except Exception as e:
+                st.error(f"❌ Okuma hatası: {e}")
 
         # 3. Ürün Eşleştirme Sözlüğü (Senin Excel başlıklarına göre uyarlandı)
         tuik_to_names = {
