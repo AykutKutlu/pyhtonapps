@@ -89,7 +89,7 @@ def calculate_meb(tuik_data, selected_option):
         enf_rates['Date'] = date_range
 
         # 2. Baz Fiyat Dosyalarını Yükleme (Aralık 2025)
-        base_file = "MEB_TR.xlsx" if selected_option == "Turkish" else "MEB_SSN.xlsx"
+        base_file = "./MEB_TR.xlsx" if selected_option == "Turkish" else "./MEB_SSN.xlsx"
         base_prices_df = pd.read_excel(base_file)
         base_prices_df.columns = [str(c).strip() for c in base_prices_df.columns]
         base_date = datetime(2025, 12, 1)
